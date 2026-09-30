@@ -23,6 +23,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Start Docker Infrastructure (PostgreSQL & Mosquitto)
+        run: |
+          docker compose up -d
+          docker compose ps
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -42,4 +47,8 @@ jobs:
         run: ruff format --check .
 
       - name: Run Pytest Suite & Architecture Boundary Verification
+        env:
+          AEGIS_DATABASE_URL: postgresql://aegis_admin:aegis_password@localhost:5434/aegis_db
+          AEGIS_MQTT_HOST: localhost
+          AEGIS_MQTT_PORT: 1883
         run: pytest -v

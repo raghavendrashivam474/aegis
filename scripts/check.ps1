@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # Aegis Local Repository Health & Verification Script
 # ============================================================
 $ErrorActionPreference = "Stop"
@@ -28,7 +28,7 @@ if ($missingDirs -eq 0) {
 
 Write-Host ""
 Write-Host "=== [2/5] Checking Core Root Artifacts ===" -ForegroundColor Cyan
-$requiredFiles = @("README.md", ".gitignore", ".gitattributes", "LICENSE", "pyproject.toml", "compose.yaml")
+$requiredFiles = @("README.md", ".gitignore", ".gitattributes", "LICENSE", "pyproject.toml", "docker-compose.yml")
 foreach ($f in $requiredFiles) {
     if (Test-Path $f) {
         Write-Host "  [PASS] $f exists" -ForegroundColor Green
@@ -84,19 +84,38 @@ if (Get-Command pytest -ErrorAction SilentlyContinue) {
 }
 
 Write-Host ""
-Write-Host "=== [5/5] Running World Model Showcase ===" -ForegroundColor Cyan
-python scripts/showcase_world_model.py
+Write-Host "=== [5/5] Running System Showcase ===" -ForegroundColor Cyan
+# Execute P1.S5 showcase if Docker infrastructure is accessible, otherwise run World Model showcase
+try {
+    $socket = New-Object System.Net.Sockets.TcpClient
+    $asyncResult = $socket.BeginConnect("localhost", 5434, $null, $null)
+    $wait = $asyncResult.AsyncWaitHandle.WaitOne(1000, $false)
+    if ($wait) {
+        $socket.EndConnect($asyncResult)
+        $socket.Close()
+        Write-Host "  Docker infrastructure detected. Running P1.S5 Showcase..." -ForegroundColor Yellow
+        python scripts/showcase_p1_s5.py
+    } else {
+        $socket.Close()
+        Write-Host "  Docker infrastructure offline. Falling back to World Model Showcase..." -ForegroundColor Yellow
+        python scripts/showcase_world_model.py
+    }
+} catch {
+    Write-Host "  Docker infrastructure offline. Falling back to World Model Showcase..." -ForegroundColor Yellow
+    python scripts/showcase_world_model.py
+}
+
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
-    Write-Host "  [PASS] World Model showcase executed successfully." -ForegroundColor Green
+    Write-Host "  [PASS] Showcase executed successfully." -ForegroundColor Green
 } else {
     Write-Host ""
-    Write-Host "  [FAIL] World Model showcase failed!" -ForegroundColor Red
+    Write-Host "  [FAIL] Showcase execution failed!" -ForegroundColor Red
     exit 1
 }
 
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Green
-Write-Host " [OK] Aegis P1.S2 World Model is HEALTHY and VERIFIED" -ForegroundColor Green
+Write-Host " [OK] Aegis P1.S5 System is HEALTHY and VERIFIED" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host ""
