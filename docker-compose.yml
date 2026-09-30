@@ -1,0 +1,30 @@
+﻿services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegis-postgres
+    environment:
+      POSTGRES_DB: aegis_db
+      POSTGRES_USER: aegis_admin
+      POSTGRES_PASSWORD: aegis_password
+    ports:
+      - "5434:5432"
+    volumes:
+      - aegis_pg_data_fresh:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis_admin -d aegis_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: aegis-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./infrastructure/docker/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
+volumes:
+  aegis_pg_data_fresh:
