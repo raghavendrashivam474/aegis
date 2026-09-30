@@ -67,3 +67,7 @@ htmlcov/
 # --- Container / Build ---
 .docker/
 *.log
+
+# Runtime stream data
+data/*.jsonl
+
