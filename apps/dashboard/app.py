@@ -3,7 +3,7 @@
 Aegis Telemetry Dashboard (Contract Consumer).
 
 Pure subscriber UI that reads deserialized TelemetryEnvelope contracts
-emitted by the independent Simulator process via IPC stream sink.
+emitted by independent producers (Simulator, Physical ESP32 via MQTT Ingestion Bridge).
 """
 
 from __future__ import annotations
@@ -59,6 +59,8 @@ def _load_telemetry_stream() -> list[dict]:
                 data = json.loads(line)
                 envelope = TelemetryEnvelope.from_dict(data)
                 time_label = _format_time_label(envelope.sent_at_iso)
+                source_type = envelope.metadata.get("source", "simulator")
+                transport_type = envelope.metadata.get("transport", "ipc_file")
 
                 for obs in envelope.observations:
                     records.append(
@@ -71,6 +73,8 @@ def _load_telemetry_stream() -> list[dict]:
                             "unit": obs.unit,
                             "quality": obs.quality,
                             "schema_version": envelope.schema_version,
+                            "source": source_type,
+                            "transport": transport_type,
                         }
                     )
     except (json.JSONDecodeError, OSError):
@@ -100,27 +104,39 @@ with st.sidebar:
     else:
         st.warning("⚠️ Stream File Not Found")
 
-st.title("🏭 Aegis Live Telemetry Stream")
-st.caption("Consuming TelemetryEnvelope (v1) contracts from independent simulator process")
+st.title("⚡ Aegis Live Telemetry Stream")
+st.caption(
+    "Consuming unified TelemetryEnvelope (v1) contracts from "
+    "Simulator and Physical ESP32 Edge Nodes"
+)
 
 records = _load_telemetry_stream()
 
 if records:
-    window_records = records[-240:]
+    window_records = records[-300:]
     df = pd.DataFrame(window_records)
 
+    # Active producers summary
+    sources = df["source"].unique()
+    devices = df["device_id"].unique()
+    dev_str = ", ".join(devices)
+    src_str = ", ".join(sources)
+    st.caption(f"**Active Producers ({len(devices)}):** {dev_str} | **Origins:** {src_str}")
+
     latest_df = df.groupby("sensor_id").last().reset_index()
-    cols = st.columns(len(latest_df))
+    cols = st.columns(min(len(latest_df), 6))
 
     for idx, row in latest_df.iterrows():
-        with cols[idx]:
+        col_target = cols[idx % len(cols)]
+        with col_target:
             val_str = f"{row['value']} {row['unit']}"
             is_warn = ("temp" in row["sensor_id"] and row["value"] > 75.0) or (
                 "vibration" in row["sensor_id"] and row["value"] > 2.5
             )
             delta_color = "inverse" if is_warn else "normal"
+            src_tag = f"[{row['source']}]"
             st.metric(
-                label=f"{row['device_id']} · {row['sensor_id']}",
+                label=f"{row['device_id']} · {row['sensor_id']} {src_tag}",
                 value=val_str,
                 delta="⚠️ High" if is_warn else "GOOD",
                 delta_color=delta_color,
@@ -128,8 +144,14 @@ if records:
 
     st.divider()
 
-    tab_temp, tab_vib, tab_press, tab_raw = st.tabs(
-        ["🌡️ Temperature", "〰️ Vibration", "🎛️ Pressure", "📜 Raw Envelopes Ledger"]
+    tab_temp, tab_vib, tab_press, tab_hum, tab_raw = st.tabs(
+        [
+            "🌡️ Temperature",
+            "〰️ Vibration",
+            "🎛️ Pressure",
+            "💧 Humidity (Physical)",
+            "📜 Raw Envelopes Ledger",
+        ]
     )
 
     with tab_temp:
@@ -142,7 +164,7 @@ if records:
                 aggfunc="last",
             )
             st.line_chart(pivot_temp, height=350)
-            st.caption("Multi-dimensional thermal dynamics with load cycles")
+            st.caption("Multi-source thermal dynamics (Digital Twins & Physical Edge)")
 
     with tab_vib:
         vib_df = df[df["sensor_id"].str.contains("vibration")]
@@ -154,7 +176,7 @@ if records:
                 aggfunc="last",
             )
             st.line_chart(pivot_vib, height=350)
-            st.caption("Multi-frequency mechanical harmonics + bearing flutter")
+            st.caption("Multi-frequency mechanical harmonics + physical vibration")
 
     with tab_press:
         press_df = df[df["sensor_id"].str.contains("pressure")]
@@ -168,13 +190,32 @@ if records:
             st.line_chart(pivot_press, height=350)
             st.caption("Hydraulic pulsation with bidirectional load wander")
 
+    with tab_hum:
+        hum_df = df[df["sensor_id"].str.contains("humidity|hum", regex=True)]
+        if not hum_df.empty:
+            pivot_hum = hum_df.pivot_table(
+                index="time_label",
+                columns="sensor_id",
+                values="value",
+                aggfunc="last",
+            )
+            st.line_chart(pivot_hum, height=350)
+            st.caption("Ambient environmental humidity monitored by physical node")
+        else:
+            st.info(
+                "No physical humidity observations received yet. "
+                "Connect ESP32 edge node to stream humidity."
+            )
+
     with tab_raw:
-        st.dataframe(df.tail(30), use_container_width=True)
+        st.dataframe(df.tail(40), use_container_width=True)
 
 else:
     st.info(
-        "Waiting for telemetry... Run the simulator in Terminal 1:\n\n"
-        "python -m apps.simulator --live --ticks 200 --interval 0.5 --scenario degradation"
+        "Waiting for telemetry... Run either producer:\n\n"
+        "1. Simulator: `python -m apps.simulator --live`\n"
+        "2. Ingestion Bridge: `python -m apps.ingestion` "
+        "(and publish from ESP32 or test publisher)"
     )
 
 if auto_refresh:
