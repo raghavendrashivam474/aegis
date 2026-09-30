@@ -37,6 +37,13 @@ def build_default_registered_devices() -> list[Device]:
                     "mm/s",
                     "device-motor-01",
                 ),
+                Sensor(
+                    "sensor-humidity-01",
+                    "Motor Humidity 01",
+                    "humidity",
+                    "percent",
+                    "device-motor-01",
+                ),
             ],
         )
     )
@@ -59,6 +66,13 @@ def build_default_registered_devices() -> list[Device]:
                     "Motor Vibration 02",
                     "vibration",
                     "mm/s",
+                    "device-motor-02",
+                ),
+                Sensor(
+                    "sensor-humidity-02",
+                    "Motor Humidity 02",
+                    "humidity",
+                    "percent",
                     "device-motor-02",
                 ),
             ],
