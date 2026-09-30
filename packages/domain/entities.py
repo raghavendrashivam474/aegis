@@ -1,8 +1,8 @@
 """
-Aegis Domain Vocabulary & Core Entities (P1.S1 Foundation).
+Aegis Domain Vocabulary & Core Entities.
 
-Note: Full domain lifecycle and state management will be implemented in P1.S2.
-This module defines the architectural types and domain vocabulary.
+P1.S1 established the foundational types.
+P1.S2 adds lifecycle status while preserving all original signatures.
 """
 
 from dataclasses import dataclass, field
@@ -18,6 +18,13 @@ class QualityFlag(StrEnum):
     UNCERTAIN = "UNCERTAIN"
     BAD = "BAD"
     CALIBRATION = "CALIBRATION"
+
+
+class EntityStatus(StrEnum):
+    """Operational lifecycle status for world model entities."""
+
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
 
 
 @dataclass(frozen=True)
@@ -43,6 +50,7 @@ class Sensor:
     measurement_type: str  # e.g., 'temperature', 'vibration', 'pressure'
     unit: str  # e.g., 'celsius', 'mm/s', 'bar'
     device_id: str
+    status: EntityStatus = EntityStatus.ACTIVE
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -54,6 +62,7 @@ class Device:
     name: str
     asset_id: str
     sensors: list[Sensor] = field(default_factory=list)
+    status: EntityStatus = EntityStatus.ACTIVE
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -66,6 +75,7 @@ class Asset:
     asset_type: str  # e.g., 'pump', 'compressor', 'turbine'
     world_id: str
     devices: list[Device] = field(default_factory=list)
+    status: EntityStatus = EntityStatus.ACTIVE
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -77,4 +87,5 @@ class World:
     name: str
     description: str = ""
     assets: list[Asset] = field(default_factory=list)
+    status: EntityStatus = EntityStatus.ACTIVE
     metadata: dict[str, Any] = field(default_factory=dict)
