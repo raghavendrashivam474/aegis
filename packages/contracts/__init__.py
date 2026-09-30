@@ -1,5 +1,6 @@
 """Aegis Interchange Contracts Package."""
 
+from .mappers import ObservationMapper
 from .models import (
     CURRENT_SCHEMA_VERSION,
     DeviceIdentity,
@@ -14,4 +15,5 @@ __all__ = [
     "SensorIdentity",
     "ObservationPayload",
     "TelemetryEnvelope",
+    "ObservationMapper",
 ]
