@@ -1,4 +1,4 @@
- Aegis — System Overview
+# Aegis — System Overview
 
 ## 1. System Vision
 
@@ -55,7 +55,8 @@ Aegis is an intelligent autonomous industrial/IoT operating architecture designe
 
 ## 2. Phase 1 Scope: Physical / Digital World
 
-> Phase 1 focuses exclusively on the foundational intake loop:
+### Phase 1 focuses exclusively on the foundational intake loop:
+
 
 ```text
 Physical World (ESP32)  ──┐
@@ -63,7 +64,7 @@ Physical World (ESP32)  ──┐
 Simulated World (Sim)   ──┘
 ```
 
->Phase 1 establishes the structural integrity of the world model and telemetry contracts before adding automated detection, ML, or autonomous actuation.
+>Phase 1 establishes the structural integrity of the world model and telemetry contracts before adding automated detection, ML, or  autonomous actuation.
 
 ## 3. Top-Level Layer Architecture
 
@@ -80,7 +81,9 @@ Simulated World (Sim)   ──┘
                                  ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                          DOMAIN LAYER                           │
-│   World  │  Asset  │  Device  │  Sensor  │  Observation Rules   │
+│   WorldModel Aggregate  │  Entity Lifecycle  │  Invariants      │
+│   World > Asset > Device > Sensor > Observation                 │
+│   Repository Port (In-Memory / future PostgreSQL)               │
 │   (Pure Python Standard Library — Zero Infrastructure Coupling) │
 └─────────────────────────────────────────────────────────────────┘
                                  ▲

@@ -1,4 +1,4 @@
- Aegis — Architectural Boundaries & Technology Independence
+# Aegis — Architectural Boundaries & Technology Independence
 
 ## 1. The Core Dependency Inversion Rule
 
@@ -13,11 +13,11 @@ Domain code must NEVER depend on infrastructure implementations.
 - ❌ No web or presentation frameworks (fastapi, starlette, pydantic, flask)
 - ❌ No hardware-specific drivers (microdot, machine, etc.)
 
->The domain layer depends solely on Python's standard library and represents pure industrial operational truths.
+> The domain layer depends solely on Python's standard library and represents pure industrial operational truths.
 
 ## 2. Technology-Neutral Contract Flow
 
->Aegis handles telemetry identically regardless of whether the source is a physical edge device or a synthetic load simulator:
+> Aegis handles telemetry identically regardless of whether the source is a physical edge device or a synthetic load simulator:
 
 ```text
 ┌───────────────────────────┐         ┌───────────────────────────┐
@@ -32,12 +32,14 @@ Domain code must NEVER depend on infrastructure implementations.
 └─────────────┬─────────────┘         └─────────────┬─────────────┘
               │                                     │
               └──────────────────┬──────────────────┘
-                                 ↓
+                                 │
+                                 ▼
               ┌─────────────────────────────────────┐
               │    Canonical TelemetryEnvelope      │
               │       (packages/contracts)          │
               └──────────────────┬──────────────────┘
-                                 ↓
+                                 │
+                                 ▼
               ┌─────────────────────────────────────┐
               │          Aegis Core Boundary        │
               │         (packages/domain)           │
@@ -46,10 +48,10 @@ Domain code must NEVER depend on infrastructure implementations.
 
 ## 3. Pluggable Infrastructure
 
->Infrastructure components sit strictly at the boundaries and implement domain-defined interfaces:
+> Infrastructure components sit strictly at the boundaries and implement domain-defined interfaces:
 
 | Capability | Phase 1 Baseline Interface | Swappable Implementations |
 | --- | --- | --- |
 | **Telemetry Transport** | Telemetry Ingestion Contract | Mosquitto, HiveMQ, HTTP Webhook, Direct Memory Queue |
-| **Persistence** | State Storage Port (P1.S2) | In-Memory (Dev), PostgreSQL / TimescaleDB (Prod) |
+| **Persistence** | WorldRepository Port (P1.S2) | InMemoryWorldRepository (Dev), PostgreSQL / TimescaleDB (Prod) |
 | **Edge Hardware** | Device Identity Contract | ESP32-WROOM, ESP32-S3, Raspberry Pi, Simulated Runtime |
