@@ -34,9 +34,13 @@ class MqttTelemetryConsumer:
         self,
         config: IngestionConfig | None = None,
         on_envelope: Callable[[TelemetryEnvelope], None] | None = None,
+        pipeline: Any | None = None,
     ) -> None:
         self.config = config or IngestionConfig()
-        self._on_envelope = on_envelope or self._default_sink_handler
+        self.pipeline = pipeline
+        self._on_envelope = on_envelope or (
+            self.pipeline.process_envelope if self.pipeline else self._default_sink_handler
+        )
         self._client: mqtt.Client | None = None
         self._is_connected = False
         self.received_count = 0
