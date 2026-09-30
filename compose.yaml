@@ -1,0 +1,24 @@
+ =====================================================================
+# Aegis Orchestration Foundation
+# Phase 1: Physical / Simulated World
+# =====================================================================
+version: "3.8"
+
+networks:
+  aegis-net:
+    name: aegis-network
+    driver: bridge
+
+# Note: Services will be defined in later sprints.
+# P1.S3 will introduce simulated asset definitions.
+# P1.S5 will introduce the common telemetry pipeline (e.g. MQTT broker).
+services:
+  # Placeholder/Documentation Service
+  # Allows 'docker compose up' to execute a harmless validation check
+  foundation-check:
+    image: alpine:latest
+    container_name: aegis-foundation-check
+    networks:
+      - aegis-net
+    command: >
+      sh -c "echo '=== Aegis Foundation Network and Volume Baseline is OK ==='"
