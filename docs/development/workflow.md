@@ -1,46 +1,54 @@
- Engineering Workflow & Standards
+# Development Workflow
 
-## 1. Golden Rules of Aegis Development
+## Branching
 
-   1. **Preserve First, Change with Reason**: Never rewrite existing functional code or rename components 
-      without explicit rationale.
-   2. **Domain Purity**: Domain entities (packages/domain) must never import from external frameworks,
-      database ORMs, or network drivers.
-   3. **Contracts Before Implementations**: Always define shared wire contracts in packages/contracts before 
-      writing edge or simulator code.
-   4. **Fast Tests**: Unit tests in tests/ must run without external databases or live network brokers.
+- Work on feature branches or directly on `main` for early-phase sprints.
+- Use **Conventional Commits** for all commit messages.
 
-## 2. Standard Development Loop
+## Commit Convention
 
-```text
-Create Branch ──► Write Tests ──► Implement Domain / Contracts ──► Run Ruff / Pytest ──► Commit
+<type>(<scope>): <description>
+
+Types: `feat`, `fix`, `test`, `docs`, `chore`, `refactor`.
+
+## Quality Gates (Local)
+
+Before committing, run:
+
+```powershell
+python -m pytest -q
+python -m ruff check .
+python -m ruff format --check .
 ```
 
-### Checking Code Quality
+>All three must be green.
 
->Before pushing code, always run the linter:
+## Windows Development Rules
 
-```Bash
-ruff check .
-```
+These rules exist because real failures occurred during P1.S1.
 
-### To automatically format files:
+### Encoding
 
-```Bash
-ruff format .
-```
+- All Python files must be UTF-8 without BOM.
+- When generating files via PowerShell 5.1, use `[System.IO.File]::WriteAllText($path, $content,`
+  (`New-Object System.Text.UTF8Encoding($false)))`.
+- Never use `Out-File` or `>` redirection for Python source (it adds BOM on Windows PowerShell).
 
-### Running the Test Suite
+### PowerShell File Generation
 
-```Bash
-pytest -v
-```
+- Use single-quoted verbatim here-strings `(@'...'@)` for Python source content.
+- Avoid Base64-based file-generation workarounds.
 
-## 3. Creating Architectural Decisions (ADRs)
+### Line Endings
 
-If a proposed change introduces a new dependency, alters an existing public contract, or reorganizes architectural boundaries:
+- `.gitattributes` enforces LF for all text files and CRLF for `.ps1`.
+- Do not manually convert line endings; let Git handle it.
 
-   1. Copy the structure from docs/decisions/ADR-001-project-architecture.md.
-   2. Assign the next sequential ADR number.
-   3. Fill in Status, Context, Decision, Alternatives Considered, Consequences, and Revisit Conditions.
-   4. Submit the ADR alongside the pull request.
+### PowerShell Scripts
+
+- Keep PowerShell scripts ASCII-safe where practical.
+- PowerShell scripts (`.ps1`) use CRLF per `.gitattributes`.
+
+### CI
+
+CI (GitHub Actions) is authoritative. Local checks are a convenience layer.
