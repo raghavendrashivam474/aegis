@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
-Write-Host "=== [1/4] Checking Required Directory Structure ===" -ForegroundColor Cyan
+Write-Host "=== [1/5] Checking Required Directory Structure ===" -ForegroundColor Cyan
 $requiredDirs = @(
     "apps\backend", "apps\simulator", "apps\edge",
     "packages\contracts", "packages\domain",
@@ -27,8 +27,8 @@ if ($missingDirs -eq 0) {
 }
 
 Write-Host ""
-Write-Host "=== [2/4] Checking Core Root Artifacts ===" -ForegroundColor Cyan
-$requiredFiles = @("README.md", ".gitignore", "LICENSE", "pyproject.toml", "compose.yaml")
+Write-Host "=== [2/5] Checking Core Root Artifacts ===" -ForegroundColor Cyan
+$requiredFiles = @("README.md", ".gitignore", ".gitattributes", "LICENSE", "pyproject.toml", "compose.yaml")
 foreach ($f in $requiredFiles) {
     if (Test-Path $f) {
         Write-Host "  [PASS] $f exists" -ForegroundColor Green
@@ -39,22 +39,27 @@ foreach ($f in $requiredFiles) {
 }
 
 Write-Host ""
-Write-Host "=== [3/4] Running Code Formatting and Lint Checks ===" -ForegroundColor Cyan
+Write-Host "=== [3/5] Running Code Formatting and Lint Checks ===" -ForegroundColor Cyan
 if (Get-Command ruff -ErrorAction SilentlyContinue) {
     Write-Host "  Running 'ruff check .' ..."
     ruff check .
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "  [PASS] Ruff linting checks passed." -ForegroundColor Green
-    } else {
+    if ($LASTEXITCODE -ne 0) {
         Write-Host "  [FAIL] Ruff reported lint issues." -ForegroundColor Red
         exit 1
     }
+    Write-Host "  Running 'ruff format --check .' ..."
+    ruff format --check .
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  [FAIL] Ruff format check reported unformatted files." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  [PASS] Ruff linting and formatting checks passed." -ForegroundColor Green
 } else {
     Write-Host "  [WARN] 'ruff' not installed in current environment. Skipping linter." -ForegroundColor Yellow
 }
 
 Write-Host ""
-Write-Host "=== [4/4] Running Pytest Suite ===" -ForegroundColor Cyan
+Write-Host "=== [4/5] Running Pytest Suite ===" -ForegroundColor Cyan
 if (Get-Command pytest -ErrorAction SilentlyContinue) {
     pytest -v
     if ($LASTEXITCODE -eq 0) {
@@ -79,7 +84,19 @@ if (Get-Command pytest -ErrorAction SilentlyContinue) {
 }
 
 Write-Host ""
+Write-Host "=== [5/5] Running World Model Showcase ===" -ForegroundColor Cyan
+python scripts/showcase_world_model.py
+if ($LASTEXITCODE -eq 0) {
+    Write-Host ""
+    Write-Host "  [PASS] World Model showcase executed successfully." -ForegroundColor Green
+} else {
+    Write-Host ""
+    Write-Host "  [FAIL] World Model showcase failed!" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ""
 Write-Host "============================================================" -ForegroundColor Green
-Write-Host " [OK] Aegis Foundation Baseline is HEALTHY and VERIFIED" -ForegroundColor Green
+Write-Host " [OK] Aegis P1.S2 World Model is HEALTHY and VERIFIED" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host ""
