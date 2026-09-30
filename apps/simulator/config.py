@@ -54,7 +54,7 @@ class AssetProfile:
 # Default world topology — Oil Field Alpha
 # ---------------------------------------------------------------------------
 
-_DEFAULT_SENSORS_PUMP: tuple[SensorProfile, ...] = (
+_BASE_SENSORS_PUMP: tuple[SensorProfile, ...] = (
     SensorProfile(
         sensor_id="sensor-temp-{idx}",
         name="Temperature",
@@ -85,9 +85,26 @@ _DEFAULT_SENSORS_PUMP: tuple[SensorProfile, ...] = (
 )
 
 
-def _build_default_assets(count: int = 2) -> tuple[AssetProfile, ...]:
+def build_default_assets(
+    count: int = 2, include_humidity: bool = False
+) -> tuple[AssetProfile, ...]:
     """Build *count* pump assets with deterministic IDs."""
     assets: list[AssetProfile] = []
+
+    sensor_profiles = list(_BASE_SENSORS_PUMP)
+    if include_humidity:
+        sensor_profiles.append(
+            SensorProfile(
+                sensor_id="sensor-humidity-{idx}",
+                name="Humidity",
+                measurement_type="humidity",
+                unit="percent",
+                normal_min=45.0,
+                normal_max=55.0,
+                abnormal_max=80.0,
+            )
+        )
+
     for i in range(1, count + 1):
         sensors = tuple(
             SensorProfile(
@@ -99,7 +116,7 @@ def _build_default_assets(count: int = 2) -> tuple[AssetProfile, ...]:
                 normal_max=s.normal_max,
                 abnormal_max=s.abnormal_max,
             )
-            for s in _DEFAULT_SENSORS_PUMP
+            for s in sensor_profiles
         )
         device = DeviceProfile(
             device_id=f"device-motor-{i:02d}",
@@ -127,4 +144,14 @@ class SimulationConfig:
     total_ticks: int = 10
     scenario: ScenarioType = ScenarioType.NORMAL
     degradation_start_tick: int = 6  # tick at which degradation begins
-    assets: tuple[AssetProfile, ...] = field(default_factory=_build_default_assets)
+    include_humidity: bool = False
+    use_wall_clock: bool = False
+    assets: tuple[AssetProfile, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        if not self.assets:
+            object.__setattr__(
+                self,
+                "assets",
+                build_default_assets(count=2, include_humidity=self.include_humidity),
+            )

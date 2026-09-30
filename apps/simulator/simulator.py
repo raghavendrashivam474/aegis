@@ -60,9 +60,10 @@ class Simulator:
         self._repo = InMemoryWorldRepository()
         self._generators: dict[str, SensorGenerator] = {}
         self._world_model: WorldModel | None = None
-        self._base_time = datetime(2026, 1, 1, 8, 0, 0, tzinfo=UTC)
-
-        # Flat lookup: sensor_id → (asset_name, device_id)
+        if self.config.use_wall_clock:
+            self._base_time = datetime.now(UTC)
+        else:
+            self._base_time = datetime(2026, 1, 1, 8, 0, 0, tzinfo=UTC)
         self._sensor_context: dict[str, tuple[str, str]] = {}
 
     # ------------------------------------------------------------------
