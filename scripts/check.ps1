@@ -94,7 +94,7 @@ try {
         $socket.EndConnect($asyncResult)
         $socket.Close()
         Write-Host "  Docker infrastructure detected. Running P1.S5 Showcase..." -ForegroundColor Yellow
-        python scripts/showcase_p1_s5.py
+        python scripts/showcase_p1_s6.py
     } else {
         $socket.Close()
         Write-Host "  Docker infrastructure offline. Falling back to World Model Showcase..." -ForegroundColor Yellow
@@ -116,6 +116,6 @@ if ($LASTEXITCODE -eq 0) {
 
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Green
-Write-Host " [OK] Aegis P1.S5 System is HEALTHY and VERIFIED" -ForegroundColor Green
+Write-Host " [OK] Aegis P1.S6 System is HEALTHY and VERIFIED" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host ""
