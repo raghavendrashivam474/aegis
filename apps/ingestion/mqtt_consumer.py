@@ -1,5 +1,5 @@
 # ruff: noqa: E402
-"""MQTT Telemetry Consumer and Stream Forwarder."""
+"""MQTT Telemetry Consumer and Stream Forwarder with Reconnection & QoS 1."""
 
 from __future__ import annotations
 
@@ -26,18 +26,20 @@ logger = logging.getLogger(__name__)
 
 class MqttTelemetryConsumer:
     """
-    Subscribes to MQTT telemetry topics, validates incoming contracts,
-    and sinks them to the shared Aegis IPC stream or custom handler.
+    Subscribes to MQTT telemetry topics with QoS 1, validates incoming contracts,
+    coordinates persistence and retry buffering, and handles broker reconnects cleanly.
     """
 
     def __init__(
         self,
         config: IngestionConfig | None = None,
-        on_envelope: Callable[[TelemetryEnvelope], None] | None = None,
+        on_envelope: Callable[[TelemetryEnvelope], Any] | None = None,
         pipeline: Any | None = None,
+        qos: int = 1,
     ) -> None:
         self.config = config or IngestionConfig()
         self.pipeline = pipeline
+        self.qos = qos
         self._on_envelope = on_envelope or (
             self.pipeline.process_envelope if self.pipeline else self._default_sink_handler
         )
@@ -45,6 +47,7 @@ class MqttTelemetryConsumer:
         self._is_connected = False
         self.received_count = 0
         self.invalid_count = 0
+        self.reconnect_count = 0
 
     def _default_sink_handler(self, envelope: TelemetryEnvelope) -> None:
         """Append envelope to JSONL telemetry stream sink."""
@@ -78,20 +81,25 @@ class MqttTelemetryConsumer:
         rc: int | mqtt.ReasonCode,
         properties: Any = None,
     ) -> None:
-        """Callback for MQTT broker connection established."""
+        """Callback for MQTT broker connection established or restored."""
         rc_code = rc.value if hasattr(rc, "value") else rc
         if rc_code == 0:
             self._is_connected = True
             logger.info(
-                "Connected to MQTT broker at %s:%s",
+                "MQTT_CONNECTED: Connected to broker at %s:%s (QoS %d)",
                 self.config.broker_host,
                 self.config.broker_port,
+                self.qos,
             )
-            client.subscribe(self.config.topic)
-            logger.info("Subscribed to topic pattern: %s", self.config.topic)
+            client.subscribe(self.config.topic, qos=self.qos)
+            logger.info("Subscribed to topic pattern: %s (QoS %d)", self.config.topic, self.qos)
+
+            # Trigger opportunistic drain on reconnection if pipeline is attached
+            if self.pipeline and hasattr(self.pipeline, "drain_buffer"):
+                self.pipeline.drain_buffer()
         else:
             self._is_connected = False
-            logger.error("Connection failed with result code %s", rc)
+            logger.error("MQTT_CONNECTION_FAILED: Result code %s", rc)
 
     def _on_disconnect(
         self,
@@ -103,8 +111,10 @@ class MqttTelemetryConsumer:
     ) -> None:
         """Callback for MQTT broker disconnection."""
         self._is_connected = False
+        self.reconnect_count += 1
         logger.warning(
-            "Disconnected from MQTT broker (rc: %s). Reconnection handled automatically.", rc
+            "MQTT_DISCONNECTED: Disconnected from broker (rc: %s). Auto-reconnecting...",
+            rc,
         )
 
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
@@ -124,6 +134,9 @@ class MqttTelemetryConsumer:
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
+
+        # Configure automatic reconnect delay (1s to 10s)
+        self._client.reconnect_delay_set(min_delay=1, max_delay=10)
 
         logger.info(
             "Connecting to broker %s:%s...", self.config.broker_host, self.config.broker_port
