@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
 from datetime import UTC, datetime
 
 import paho.mqtt.client as mqtt
@@ -60,23 +61,30 @@ def is_infra_available() -> bool:
 INFRA_AVAILABLE = is_infra_available()
 
 
-@pytest.fixture(scope="module")
+def _clean_tables() -> None:
+    import psycopg
+
+    try:
+        with psycopg.connect(DB_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("TRUNCATE TABLE aegis_telemetry_observations CASCADE;")
+                cur.execute("TRUNCATE TABLE aegis_sensors CASCADE;")
+                cur.execute("TRUNCATE TABLE aegis_devices CASCADE;")
+            conn.commit()
+    except Exception:
+        pass
+
+
+@pytest.fixture(scope="function")
 def setup_integration_db():
-    """Ensure schema migrations are cleanly applied on the integration database."""
+    """Ensure schema migrations are cleanly applied with fresh test isolation."""
     if not INFRA_AVAILABLE:
         pytest.skip("Docker integration infrastructure is offline.")
 
     run_migrations(DB_URL)
+    _clean_tables()
     yield
-    # Truncate tables cleanly after running integration scenarios
-    import psycopg
-
-    with psycopg.connect(DB_URL) as conn:
-        with conn.cursor() as cur:
-            cur.execute("TRUNCATE TABLE aegis_telemetry_observations CASCADE;")
-            cur.execute("TRUNCATE TABLE aegis_sensors CASCADE;")
-            cur.execute("TRUNCATE TABLE aegis_devices CASCADE;")
-        conn.commit()
+    _clean_tables()
 
 
 def test_tc_s5_27_end_to_end_mqtt_to_postgres_delivery(setup_integration_db):
@@ -107,11 +115,12 @@ def test_tc_s5_27_end_to_end_mqtt_to_postgres_delivery(setup_integration_db):
 
     # 2. Spin up Ingestion Pipeline & consumer on background thread
     pipeline = TelemetryIngestionPipeline(registry=registry, repository=repo)
+    unique_suffix = uuid.uuid4().hex[:6]
     config = IngestionConfig(
         broker_host=MQTT_HOST,
         broker_port=MQTT_PORT,
-        topic="aegis/telemetry/device-esp32-99",
-        client_id="aegis-e2e-consumer",
+        topic=f"aegis/telemetry/device-esp32-99/{unique_suffix}",
+        client_id=f"aegis-e2e-consumer-{unique_suffix}",
     )
     consumer = MqttTelemetryConsumer(config=config, pipeline=pipeline)
     consumer.start(blocking=False)
@@ -123,7 +132,7 @@ def test_tc_s5_27_end_to_end_mqtt_to_postgres_delivery(setup_integration_db):
         # 3. Connect a mock client and publish a telemetry envelope
         pub_client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            client_id="e2e-test-publisher",
+            client_id=f"e2e-test-pub-{unique_suffix}",
         )
         pub_client.connect(MQTT_HOST, MQTT_PORT, 60)
 
@@ -134,7 +143,7 @@ def test_tc_s5_27_end_to_end_mqtt_to_postgres_delivery(setup_integration_db):
             sent_at_iso=now_iso,
             observations=[
                 ObservationPayload(
-                    observation_id="obs-e2e-100",
+                    observation_id=f"obs-e2e-100-{unique_suffix}",
                     sensor_id="sensor-temp-device-esp32-99",
                     timestamp_iso=now_iso,
                     value=34.8,
@@ -144,7 +153,9 @@ def test_tc_s5_27_end_to_end_mqtt_to_postgres_delivery(setup_integration_db):
             metadata={"transport": "mqtt"},
         )
 
-        pub_client.publish("aegis/telemetry/device-esp32-99", json.dumps(envelope.to_dict()))
+        pub_client.publish(
+            f"aegis/telemetry/device-esp32-99/{unique_suffix}", json.dumps(envelope.to_dict())
+        )
         pub_client.disconnect()
 
         # Allow network processing roundtrip
@@ -153,7 +164,7 @@ def test_tc_s5_27_end_to_end_mqtt_to_postgres_delivery(setup_integration_db):
         # 4. Query PostgreSQL and verify correct persistence
         records = repo.get_observations(device_id="device-esp32-99")
         assert len(records) == 1
-        assert records[0].observation_id == "obs-e2e-100"
+        assert records[0].observation_id == f"obs-e2e-100-{unique_suffix}"
         assert records[0].value == 34.8
         assert records[0].unit == "celsius"
 
@@ -166,22 +177,13 @@ def test_tc_s5_21_unknown_device_mqtt_rejected_and_not_persisted(setup_integrati
     registry = PostgresDeviceRegistry(DB_URL)
     repo = PostgresTelemetryRepository(DB_URL)
 
-    # Confirm device is not registered
-    if registry.is_registered("device-unknown-99"):
-        import psycopg
-
-        with psycopg.connect(DB_URL) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM aegis_devices WHERE device_id = %s;", ("device-unknown-99",)
-                )
-
+    unique_suffix = uuid.uuid4().hex[:6]
     pipeline = TelemetryIngestionPipeline(registry=registry, repository=repo)
     config = IngestionConfig(
         broker_host=MQTT_HOST,
         broker_port=MQTT_PORT,
-        topic="aegis/telemetry/device-unknown-99",
-        client_id="aegis-e2e-consumer-unknown",
+        topic=f"aegis/telemetry/device-unknown-99/{unique_suffix}",
+        client_id=f"aegis-e2e-consumer-unknown-{unique_suffix}",
     )
     consumer = MqttTelemetryConsumer(config=config, pipeline=pipeline)
     consumer.start(blocking=False)
@@ -191,7 +193,7 @@ def test_tc_s5_21_unknown_device_mqtt_rejected_and_not_persisted(setup_integrati
     try:
         pub_client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            client_id="e2e-test-pub-unknown",
+            client_id=f"e2e-test-pub-unknown-{unique_suffix}",
         )
         pub_client.connect(MQTT_HOST, MQTT_PORT, 60)
 
@@ -202,7 +204,7 @@ def test_tc_s5_21_unknown_device_mqtt_rejected_and_not_persisted(setup_integrati
             sent_at_iso=now_iso,
             observations=[
                 ObservationPayload(
-                    observation_id="obs-unknown-e2e",
+                    observation_id=f"obs-unknown-e2e-{unique_suffix}",
                     sensor_id="sensor-temp-device-esp32-99",
                     timestamp_iso=now_iso,
                     value=45.0,
@@ -211,7 +213,9 @@ def test_tc_s5_21_unknown_device_mqtt_rejected_and_not_persisted(setup_integrati
             ],
         )
 
-        pub_client.publish("aegis/telemetry/device-unknown-99", json.dumps(envelope.to_dict()))
+        pub_client.publish(
+            f"aegis/telemetry/device-unknown-99/{unique_suffix}", json.dumps(envelope.to_dict())
+        )
         pub_client.disconnect()
 
         time.sleep(1.0)
