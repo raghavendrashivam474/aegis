@@ -126,6 +126,7 @@ def _resolve_database_url() -> str:
         "postgresql://aegis_admin:aegis_password@localhost:5434/aegis_db",
     )
 
+
 DEFAULT_DB_URL = _resolve_database_url()
 ```
 
