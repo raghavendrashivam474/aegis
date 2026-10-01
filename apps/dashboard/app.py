@@ -30,10 +30,22 @@ from apps.backend.postgres_adapter import PostgresDeviceRegistry
 from apps.backend.query_service import TelemetryQueryService
 
 STREAM_FILE = Path("data/telemetry_stream.jsonl")
-DEFAULT_DB_URL = os.getenv(
-    "AEGIS_DATABASE_URL",
-    "postgresql://aegis_admin:aegis_password@localhost:5434/aegis_db",
-)
+
+
+def _resolve_database_url() -> str:
+    """Resolve database URL from st.secrets, environment, or default fallback."""
+    try:
+        if "AEGIS_DATABASE_URL" in st.secrets:
+            return str(st.secrets["AEGIS_DATABASE_URL"])
+    except Exception:
+        pass
+    return os.getenv(
+        "AEGIS_DATABASE_URL",
+        "postgresql://aegis_admin:aegis_password@localhost:5434/aegis_db",
+    )
+
+
+DEFAULT_DB_URL = _resolve_database_url()
 
 st.set_page_config(
     page_title="Aegis - Telemetry Dashboard",
@@ -122,7 +134,7 @@ def _load_postgres_history(
 # Sidebar Setup
 with st.sidebar:
     st.title("🛡️ Aegis Dashboard")
-    st.markdown("**Sprint P1.S6 — Unified Operational World**")
+    st.markdown("**Operational World Telemetry**")
     st.divider()
 
     data_source = st.radio(
@@ -245,10 +257,10 @@ if records:
 else:
     st.info(
         "Waiting for telemetry observations... Ensure PostgreSQL Docker containers are online and run a producer:\n\n"
-        "1. Start Infrastructure: `docker compose up -d`\n"
-        "2. Seed Identity Registry: `python -m apps.backend.seed_devices`\n"
-        "3. Ingest: `python -m apps.ingestion`\n"
-        "4. Stream: `python -m apps.simulator --mqtt --live` or Mock ESP32 node"
+        "1. Start Infrastructure: docker compose up -d\n"
+        "2. Seed Identity Registry: python -m apps.backend.seed_devices\n"
+        "3. Ingest: python -m apps.ingestion\n"
+        "4. Stream: python -m apps.simulator --mqtt --live or Mock ESP32 node"
     )
 
 if auto_refresh:
