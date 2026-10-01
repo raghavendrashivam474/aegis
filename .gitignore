@@ -71,3 +71,6 @@ htmlcov/
 # Runtime stream data
 data/*.jsonl
 
+
+# --- Streamlit Cloud Secrets ---
+.streamlit/secrets.toml
