@@ -1,0 +1,149 @@
+﻿# C-MAPSS FD001 Dataset Manifest
+# Generated: 2026-10-03T05:59:59Z
+
+dataset:
+  name: "C-MAPSS Turbofan Engine Degradation Simulation"
+  subset: "FD001"
+  description: >
+    Single operating condition, single fault mode (HPC degradation).
+    100 turbofan engines, each run to failure.
+    21 sensor measurements + 3 operational settings per cycle.
+
+source:
+  publisher: "NASA Prognostics Center of Excellence"
+  url: "https://ti.arc.nasa.gov/m/project/prognostic-repository/"
+  mirror: "https://www.kaggle.com/datasets/behrad3d/nasa-cmaps"
+  version: "Original 2008 release"
+  license: "NASA Open Data — no restrictions"
+  download_date: "2026-10-03"
+
+file:
+  name: "train_FD001.txt"
+  format: "space-delimited text"
+  encoding: "UTF-8"
+  sha256: "CF6AC213BBBD3DC2E62FD150443E862A3D32EB1C86814ECBDE5EAF9770614DA8"
+  records: 543
+
+schema:
+  columns:
+    - index: 0
+      name: "unit_number"
+      type: "integer"
+      aegis_mapping: "device_id (engine-XXX)"
+    - index: 1
+      name: "time_in_cycles"
+      type: "integer"
+      aegis_mapping: "observation.timestamp (synthetic)"
+    - index: 2
+      name: "operational_setting_1"
+      type: "float"
+      aegis_mapping: "metadata"
+    - index: 3
+      name: "operational_setting_2"
+      type: "float"
+      aegis_mapping: "metadata"
+    - index: 4
+      name: "operational_setting_3"
+      type: "float"
+      aegis_mapping: "metadata"
+    - index: 5
+      name: "T2"
+      type: "float"
+      aegis_mapping: "sensor-t2-inlet (temperature, K)"
+    - index: 6
+      name: "T24"
+      type: "float"
+      aegis_mapping: "sensor-t24-lpc (temperature, K)"
+    - index: 7
+      name: "T30"
+      type: "float"
+      aegis_mapping: "sensor-t30-hpc (temperature, K)"
+    - index: 8
+      name: "T50"
+      type: "float"
+      aegis_mapping: "sensor-t50-lpt (temperature, K)"
+    - index: 9
+      name: "P2"
+      type: "float"
+      aegis_mapping: "sensor-p2-inlet (pressure, psi)"
+    - index: 10
+      name: "P15"
+      type: "float"
+      aegis_mapping: "sensor-p15-bypass (pressure, psi)"
+    - index: 11
+      name: "P30"
+      type: "float"
+      aegis_mapping: "sensor-p30-hpc (pressure, psi)"
+    - index: 12
+      name: "Nf"
+      type: "float"
+      aegis_mapping: "sensor-nf-fan (rotational_speed, rpm)"
+    - index: 13
+      name: "Nc"
+      type: "float"
+      aegis_mapping: "sensor-nc-core (rotational_speed, rpm)"
+    - index: 14
+      name: "epr"
+      type: "float"
+      aegis_mapping: "sensor-epr (pressure_ratio, ratio)"
+    - index: 15
+      name: "Ps30"
+      type: "float"
+      aegis_mapping: "sensor-ps30 (pressure, psi)"
+    - index: 16
+      name: "phi"
+      type: "float"
+      aegis_mapping: "sensor-phi (flow_ratio, ratio)"
+    - index: 17
+      name: "NRf"
+      type: "float"
+      aegis_mapping: "sensor-nrf (rotational_speed, rpm)"
+    - index: 18
+      name: "NRc"
+      type: "float"
+      aegis_mapping: "sensor-nrc (rotational_speed, rpm)"
+    - index: 19
+      name: "BPR"
+      type: "float"
+      aegis_mapping: "sensor-bpr (ratio, ratio)"
+    - index: 20
+      name: "farB"
+      type: "float"
+      aegis_mapping: "sensor-farb (ratio, ratio)"
+    - index: 21
+      name: "htBleed"
+      type: "float"
+      aegis_mapping: "sensor-htbleed (enthalpy, kJ/kg)"
+    - index: 22
+      name: "Nf_dmd"
+      type: "float"
+      aegis_mapping: "sensor-nf-dmd (rotational_speed, rpm)"
+    - index: 23
+      name: "PCNfR_dmd"
+      type: "float"
+      aegis_mapping: "sensor-pcnfr-dmd (rotational_speed, rpm)"
+    - index: 24
+      name: "W31"
+      type: "float"
+      aegis_mapping: "sensor-w31 (flow, lbm/s)"
+    - index: 25
+      name: "W32"
+      type: "float"
+      aegis_mapping: "sensor-w32 (flow, lbm/s)"
+
+timestamp_synthesis:
+  method: "deterministic offset from cycle number"
+  base: "2026-01-01T00:00:00+00:00"
+  interval: "1 minute per cycle"
+  formula: "base + (cycle - 1) * 60 seconds"
+  rationale: >
+    C-MAPSS provides only ordinal cycle numbers.
+    Synthetic timestamps preserve ordering and enable
+    time-range queries without fabricating wall-clock provenance.
+
+known_limitations:
+  - "Simulated data from C-MAPSS engine model, not physical measurements"
+  - "No wall-clock timestamps — cycle numbers only"
+  - "FD001 contains single fault mode (HPC degradation)"
+  - "Sensor noise characteristics are model-generated"
+

@@ -74,3 +74,11 @@ data/*.jsonl
 
 # --- Streamlit Cloud Secrets ---
 .streamlit/secrets.toml
+
+# P1.S9 — Raw dataset files (keep manifests, ignore data)
+datasets/**/*.txt
+datasets/**/*.csv
+datasets/**/*.zip
+datasets/**/*.parquet
+!datasets/**/manifest.yaml
+!datasets/**/README.md
