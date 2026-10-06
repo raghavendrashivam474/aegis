@@ -1,9 +1,8 @@
-"""
+﻿"""
 Aegis Domain Package.
-
-Exposes domain entities, aggregates, exceptions, and persistence ports.
+Exposes domain entities, aggregates, exceptions, persistence ports,
+and intelligence value objects.
 """
-
 from .entities import (
     Asset,
     Device,
@@ -18,6 +17,16 @@ from .exceptions import (
     EntityNotFoundError,
     InvariantViolationError,
 )
+from .intelligence import (
+    AnomalyDetectionResult,
+    AnomalySeverity,
+    AnomalyStatus,
+    HealthAssessment,
+    OperationalState,
+    SensorSignal,
+    SignalEvidence,
+    TrendDirection,
+)
 from .model import WorldModel
 from .repository import (
     DeviceRegistry,
@@ -29,20 +38,28 @@ from .repository import (
 )
 
 __all__ = [
+    "AnomalyDetectionResult",
+    "AnomalySeverity",
+    "AnomalyStatus",
     "Asset",
     "Device",
     "DeviceRegistry",
     "DuplicateEntityError",
     "EntityNotFoundError",
     "EntityStatus",
+    "HealthAssessment",
     "InMemoryDeviceRegistry",
     "InMemoryTelemetryRepository",
     "InMemoryWorldRepository",
     "InvariantViolationError",
     "Observation",
+    "OperationalState",
     "QualityFlag",
     "Sensor",
+    "SensorSignal",
+    "SignalEvidence",
     "TelemetryRepository",
+    "TrendDirection",
     "World",
     "WorldModel",
     "WorldRepository",
