@@ -21,9 +21,9 @@ Examples:
     python scripts/run_p3s3_benchmark.py --tier representative --budget 120
 """
 
-import sys
-import os
 import argparse
+import os
+import sys
 from datetime import datetime
 
 # Ensure project root is on the path
@@ -33,9 +33,7 @@ if project_root not in sys.path:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Aegis P3.S3 Performance & Reliability Benchmark"
-    )
+    parser = argparse.ArgumentParser(description="Aegis P3.S3 Performance & Reliability Benchmark")
     parser.add_argument(
         "--tier",
         choices=["small", "representative", "stress"],
@@ -112,12 +110,8 @@ def main():
         out_path = args.output
     else:
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-        out_dir = os.path.join(
-            project_root, "docs", "phases", "phase3", "s3", "evidence"
-        )
-        out_path = os.path.join(
-            out_dir, f"benchmark-{args.tier}-{ts}.json"
-        )
+        out_dir = os.path.join(project_root, "docs", "phases", "phase3", "s3", "evidence")
+        out_path = os.path.join(out_dir, f"benchmark-{args.tier}-{ts}.json")
 
     saved = harness.save_report(report, out_path)
     print(f"Report saved to: {saved}")
@@ -137,4 +131,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

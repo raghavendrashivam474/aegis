@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+from __future__ import annotations
+
 import logging
 import os
 import sys
@@ -11,7 +12,8 @@ if str(ROOT / "packages") not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from domain.entities import Device, Sensor, EntityStatus
+from domain.entities import Device, EntityStatus, Sensor
+
 from apps.backend.postgres_adapter import PostgresDeviceRegistry
 from apps.dataset_replay.config import DatasetReplayConfig
 
@@ -43,13 +45,14 @@ MAPSS_SENSORS = [
     ("sensor-w32", "W32 LPT Coolant Bleed", "flow", "lbm/s"),
 ]
 
+
 def discover_unique_units(filepath: Path) -> list[int]:
     """Scan file and return sorted unique unit IDs."""
     if not filepath.exists():
         raise FileNotFoundError(f"Dataset file not found at {filepath}")
-    
+
     units = set()
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -59,14 +62,14 @@ def discover_unique_units(filepath: Path) -> list[int]:
                 units.add(int(float(parts[0])))
     return sorted(list(units))
 
+
 def register_dataset_assets(database_url: str | None = None) -> int:
     """Connect to database and register all discovered engines."""
     config = DatasetReplayConfig()
     db_url = database_url or os.getenv(
-        "AEGIS_DATABASE_URL",
-        "postgresql://aegis_admin:aegis_password@localhost:5434/aegis_db"
+        "AEGIS_DATABASE_URL", "postgresql://aegis_admin:aegis_password@localhost:5434/aegis_db"
     )
-    
+
     logger.info("Discovering devices from dataset: %s", config.dataset_file_path)
     try:
         units = discover_unique_units(config.dataset_file_path)
@@ -74,15 +77,15 @@ def register_dataset_assets(database_url: str | None = None) -> int:
     except Exception as err:
         logger.error("Failed to discover unique units: %s", err)
         return 1
-    
+
     logger.info("Initializing Postgres Device Registry...")
     registry = PostgresDeviceRegistry(db_url)
-    
+
     try:
         registered_count = 0
         for unit in units:
             device_id = f"engine-{unit:03d}"
-            
+
             # Construct nested sensors for this engine
             sensors_to_register = []
             for item in MAPSS_SENSORS:
@@ -96,31 +99,38 @@ def register_dataset_assets(database_url: str | None = None) -> int:
                         unit=s_unit,
                         device_id=device_id,
                         status=EntityStatus.ACTIVE,
-                        metadata={"source": "cmapss_fd001_historical"}
+                        metadata={"source": "cmapss_fd001_historical"},
                     )
                 )
-            
+
             device = Device(
                 device_id=device_id,
                 name=f"Turbofan Engine Model {unit:03d}",
                 asset_id=config.asset_id,
                 sensors=sensors_to_register,
                 status=EntityStatus.ACTIVE,
-                metadata={"dataset_class": "NASA_CMAPSS_FD001"}
+                metadata={"dataset_class": "NASA_CMAPSS_FD001"},
             )
-            
+
             # Upsert into PostgreSQL Device Registry
             registry.register_device(device)
             registered_count += 1
-            logger.info("Successfully registered device '%s' with %d associated sensors.", device_id, len(sensors_to_register))
-            
-        logger.info("Registration sequence complete. Total devices registered: %d", registered_count)
+            logger.info(
+                "Successfully registered device '%s' with %d associated sensors.",
+                device_id,
+                len(sensors_to_register),
+            )
+
+        logger.info(
+            "Registration sequence complete. Total devices registered: %d", registered_count
+        )
         return 0
     except Exception as err:
         logger.error("Error during system registration: %s", err)
         return 2
     finally:
         registry.close()
+
 
 if __name__ == "__main__":
     sys.exit(register_dataset_assets())

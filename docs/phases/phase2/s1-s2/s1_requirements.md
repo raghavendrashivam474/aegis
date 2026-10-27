@@ -88,39 +88,43 @@ class OperationalState(StrEnum):
     CRITICAL = "CRITICAL"
     UNKNOWN = "UNKNOWN"
 
+
 class TrendDirection(StrEnum):
     STABLE = "STABLE"
     INCREASING = "INCREASING"
     DECREASING = "DECREASING"
     UNKNOWN = "UNKNOWN"
 
+
 @dataclass(frozen=True)
 class SensorSignal:
     """Per-sensor evidence contributing to an asset health assessment."""
+
     sensor_id: str
     measurement_type: str
     baseline_mean: float
     baseline_std: float
     current_mean: float
-    deviation_score: float      # |current - baseline| / baseline_std
+    deviation_score: float  # |current - baseline| / baseline_std
     trend: TrendDirection
-    data_quality: float         # 0.0–1.0 fraction of GOOD observations
+    data_quality: float  # 0.0–1.0 fraction of GOOD observations
     sample_count: int
+
 
 @dataclass(frozen=True)
 class HealthAssessment:
     """Immutable snapshot of an asset's operational health at a point in time."""
+
     asset_id: str
     device_id: str
     operational_state: OperationalState
-    health_score: float         # 0.0–100.0
-    confidence: float           # 0.0–1.0
+    health_score: float  # 0.0–100.0
+    confidence: float  # 0.0–1.0
     trend: TrendDirection
     sensor_signals: tuple[SensorSignal, ...]
     evaluated_at: datetime
-    evidence_summary: str       # Human-readable one-liner
+    evidence_summary: str  # Human-readable one-liner
     metadata: dict[str, Any]
-
 ```
 
 **Rationale:**

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Aegis Intelligence — Health Assessment Service (P2.S1).
 Computes operational state and health from historical telemetry.
 
@@ -11,13 +11,13 @@ Architecture:
 
 No SQL. No direct database access. No side effects beyond computation.
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 
 from domain.entities import Observation, QualityFlag
 from domain.intelligence import (
@@ -42,12 +42,13 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class HealthConfig:
     """Tunable parameters for health assessment computation."""
-    baseline_window: int = 50       # Number of early observations for baseline
-    current_window: int = 20        # Number of recent observations for current state
+
+    baseline_window: int = 50  # Number of early observations for baseline
+    current_window: int = 20  # Number of recent observations for current state
     min_baseline_samples: int = 10  # Minimum GOOD observations for valid baseline
     deviation_weight: float = 15.0  # Score penalty per sigma of deviation
     trend_slope_threshold: float = 0.001  # Relative slope threshold for trend
-    observation_limit: int = 5000   # Max observations to retrieve per device
+    observation_limit: int = 5000  # Max observations to retrieve per device
 
 
 class HealthAssessmentService:
@@ -123,7 +124,9 @@ class HealthAssessmentService:
         if observations and observations[0].metadata.get("sensor_name"):
             measurement_type = observations[0].metadata["sensor_name"]
         elif "-" in sensor_id:
-            measurement_type = sensor_id.split("-")[1] if len(sensor_id.split("-")) > 1 else "unknown"
+            measurement_type = (
+                sensor_id.split("-")[1] if len(sensor_id.split("-")) > 1 else "unknown"
+            )
 
         # Check for insufficient baseline data
         if len(good_obs) < cfg.min_baseline_samples:
@@ -147,7 +150,7 @@ class HealthAssessmentService:
         baseline_std = compute_std(baseline_values, baseline_mean)
 
         # Effective standard deviation: avoid zero-division on flat sensors
-                # Effective standard deviation: use empirical std if variance exists,
+        # Effective standard deviation: use empirical std if variance exists,
         # otherwise use a sensible physical noise floor (1% of mean or min 0.1)
         if baseline_std > 1e-4:
             effective_std = baseline_std
@@ -156,7 +159,9 @@ class HealthAssessmentService:
 
         # Current window: evaluate recent valid observations (GOOD + UNCERTAIN)
         current_obs = observations[-cfg.current_window :]
-        current_valid = [o for o in current_obs if o.quality in (QualityFlag.GOOD, QualityFlag.UNCERTAIN)]
+        current_valid = [
+            o for o in current_obs if o.quality in (QualityFlag.GOOD, QualityFlag.UNCERTAIN)
+        ]
         current_valid_values = [o.value for o in current_valid]
 
         if not current_valid_values:
@@ -206,8 +211,7 @@ class HealthAssessmentService:
 
         # Per-sensor health scores
         sensor_healths = [
-            compute_sensor_health(s.deviation_score, cfg.deviation_weight)
-            for s in valid_signals
+            compute_sensor_health(s.deviation_score, cfg.deviation_weight) for s in valid_signals
         ]
         mean_health = sum(sensor_healths) / len(sensor_healths)
         min_health = min(sensor_healths)
@@ -318,5 +322,3 @@ class HealthAssessmentService:
             evidence_summary=reason,
             metadata={"reason": reason},
         )
-
-

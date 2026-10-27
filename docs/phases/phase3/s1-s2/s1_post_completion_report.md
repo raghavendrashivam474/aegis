@@ -121,10 +121,10 @@ The orchestrator. It has three public responsibilities and nothing else:
    - Builds a fresh `InMemoryTelemetryRepository` and `save_batch(window_obs)`.
    - Invokes the full production chain **unmodified**:
      ```python
-     health     = HealthAssessmentService(repo).assess(device_id, asset_id)
-     anomaly    = AnomalyDetectionService(repo).detect(device_id, asset_id)
+     health = HealthAssessmentService(repo).assess(device_id, asset_id)
+     anomaly = AnomalyDetectionService(repo).detect(device_id, asset_id)
      diagnostic = DiagnosticService().diagnose(health, anomaly)
-     finding    = OperationalRiskService().evaluate(health, anomaly, diagnostic)
+     finding = OperationalRiskService().evaluate(health, anomaly, diagnostic)
      ```
    - Checks pass/fail against ground-truth expectations and returns an immutable `EvaluationResult`.
 3. **`run_fleet_benchmark(cases, trajectories)`** — Fans `evaluate_case` across the full batch.
@@ -187,8 +187,8 @@ This section is deliberately honest. Several problems surfaced during the sprint
 **Root cause:** This was the most instructive problem of the sprint, and it reinforced the brief's rule *"Never change the detector before you understand the failure."* My initial implementation sliced observations to **only** the window `[window_start, window_end]`, which meant for a late-lifecycle window (e.g. cycles 85–120) the detector saw **only** those 36 cycles. Inspecting `AnomalyDetectionService._analyze_sensor` revealed:
 
 ```python
-baseline_obs = good_obs[: cfg.baseline_window]   # First N observations = baseline
-current_obs  = observations[-cfg.eval_window :]  # Recent N observations = evaluated
+baseline_obs = good_obs[: cfg.baseline_window]  # First N observations = baseline
+current_obs = observations[-cfg.eval_window :]  # Recent N observations = evaluated
 ```
 
 By slicing to the late window only, I had made the **degraded** cycles the "baseline", so of course nothing looked anomalous relative to themselves.

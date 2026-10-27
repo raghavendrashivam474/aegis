@@ -1,4 +1,4 @@
-﻿"""
+"""
 Aegis Intelligence — Diagnostic Service (P2.S3).
 Synthesizes operational health and anomaly detections into structured evidence,
 contextual operational state, deterministic root-cause hypotheses, and explicit
@@ -11,13 +11,13 @@ Architecture:
 
 Pure domain service. No external ML / LLM. Fully deterministic.
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 
 from domain.intelligence import (
     AnomalyDetectionResult,
@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class DiagnosticConfig:
     """Tunable parameters for deterministic diagnostic rule evaluation."""
+
     min_confidence_threshold: float = 0.40
     single_sensor_isolated_sigma: float = 2.5
     subsystem_correlation_min_sensors: int = 2
@@ -154,7 +155,9 @@ class DiagnosticService:
     ) -> list[DiagnosticEvidence]:
         """Merge SensorSignal and SignalEvidence into structured DiagnosticEvidence objects."""
         health_by_sensor: dict[str, SensorSignal] = {s.sensor_id: s for s in health.sensor_signals}
-        anomaly_by_sensor: dict[str, SignalEvidence] = {e.sensor_id: e for e in anomaly.evidence_list}
+        anomaly_by_sensor: dict[str, SignalEvidence] = {
+            e.sensor_id: e for e in anomaly.evidence_list
+        }
 
         evidence_list: list[DiagnosticEvidence] = []
         all_sensor_ids = sorted(set(health_by_sensor.keys()) | set(anomaly_by_sensor.keys()))
@@ -163,13 +166,27 @@ class DiagnosticService:
             h_sig = health_by_sensor.get(sid)
             a_sig = anomaly_by_sensor.get(sid)
 
-            measurement_type = h_sig.measurement_type if h_sig else (a_sig.measurement_type if a_sig else "unknown")
-            dev_sigma = a_sig.deviation_sigma if a_sig else (h_sig.deviation_score if h_sig else 0.0)
+            measurement_type = (
+                h_sig.measurement_type
+                if h_sig
+                else (a_sig.measurement_type if a_sig else "unknown")
+            )
+            dev_sigma = (
+                a_sig.deviation_sigma if a_sig else (h_sig.deviation_score if h_sig else 0.0)
+            )
             trend = a_sig.trend if a_sig else (h_sig.trend if h_sig else TrendDirection.UNKNOWN)
             persistence = a_sig.persistence_count if a_sig else 0
             quality = h_sig.data_quality if h_sig else 1.0
             contrib = a_sig.contribution_score if a_sig else 0.0
-            reason = a_sig.reason if a_sig else (f"Nominal ({dev_sigma:.2f}σ)" if dev_sigma < 1.5 else f"Deviated ({dev_sigma:.2f}σ)")
+            reason = (
+                a_sig.reason
+                if a_sig
+                else (
+                    f"Nominal ({dev_sigma:.2f}σ)"
+                    if dev_sigma < 1.5
+                    else f"Deviated ({dev_sigma:.2f}σ)"
+                )
+            )
 
             observation_desc = (
                 f"{sid} ({measurement_type}): {dev_sigma:.2f}σ deviation, "
@@ -204,10 +221,17 @@ class DiagnosticService:
         severe_evidence = [e for e in evidence_list if e.deviation_sigma >= 3.0]
 
         # 1. Systemic / Multi-Subsystem Degradation Rule
-        active_subsystems = sum(1 for sub, evs in by_subsystem.items() if sub != "general" and any(e.deviation_sigma >= 1.5 for e in evs))
+        active_subsystems = sum(
+            1
+            for sub, evs in by_subsystem.items()
+            if sub != "general" and any(e.deviation_sigma >= 1.5 for e in evs)
+        )
         if active_subsystems >= 2 and len(deviated_evidence) >= 3:
             conf = 0.85 + min(0.12, 0.02 * len(deviated_evidence))
-            sup = [f"{e.sensor_id} ({e.measurement_type}): {e.deviation_sigma}σ" for e in deviated_evidence[:6]]
+            sup = [
+                f"{e.sensor_id} ({e.measurement_type}): {e.deviation_sigma}σ"
+                for e in deviated_evidence[:6]
+            ]
             hypotheses.append(
                 DiagnosticHypothesis(
                     category=HypothesisCategory.SYSTEMIC_MULTI_SUBSYSTEM,
@@ -215,7 +239,9 @@ class DiagnosticService:
                     confidence=round(conf, 2),
                     supporting_evidence=tuple(sup),
                     contradicting_evidence=(),
-                    severity=AnomalySeverity.CRITICAL if len(severe_evidence) >= 2 else AnomalySeverity.HIGH,
+                    severity=AnomalySeverity.CRITICAL
+                    if len(severe_evidence) >= 2
+                    else AnomalySeverity.HIGH,
                 )
             )
 
@@ -225,8 +251,14 @@ class DiagnosticService:
             and context.max_persistence <= self._config.transient_max_persistence
             and context.dominant_trend == TrendDirection.STABLE
         ):
-            sup = [f"{e.sensor_id} shows brief deviation of {e.deviation_sigma}σ (persistence <= {context.max_persistence} cycles)" for e in deviated_evidence]
-            con = ["Dominant operational trend remains stable", "No persistent degradation observed"]
+            sup = [
+                f"{e.sensor_id} shows brief deviation of {e.deviation_sigma}σ (persistence <= {context.max_persistence} cycles)"
+                for e in deviated_evidence
+            ]
+            con = [
+                "Dominant operational trend remains stable",
+                "No persistent degradation observed",
+            ]
             hypotheses.append(
                 DiagnosticHypothesis(
                     category=HypothesisCategory.TRANSIENT_DISTURBANCE,
@@ -241,17 +273,29 @@ class DiagnosticService:
         # 3. Localized / Isolated Sensor Anomaly Rule
         if len(deviated_evidence) == 1 and len(evidence_list) >= 2:
             target = deviated_evidence[0]
-            nominal_companions = [e for e in evidence_list if e.sensor_id != target.sensor_id and e.deviation_sigma < 1.0]
+            nominal_companions = [
+                e
+                for e in evidence_list
+                if e.sensor_id != target.sensor_id and e.deviation_sigma < 1.0
+            ]
             if len(nominal_companions) >= 1:
-                sup = [f"Isolated deviation on {target.sensor_id} ({target.deviation_sigma}σ)", target.reason]
-                con = [f"Companion sensor {c.sensor_id} is nominal ({c.deviation_sigma}σ)" for c in nominal_companions[:3]]
+                sup = [
+                    f"Isolated deviation on {target.sensor_id} ({target.deviation_sigma}σ)",
+                    target.reason,
+                ]
+                con = [
+                    f"Companion sensor {c.sensor_id} is nominal ({c.deviation_sigma}σ)"
+                    for c in nominal_companions[:3]
+                ]
                 hyp = DiagnosticHypothesis(
                     category=HypothesisCategory.LOCALIZED_SENSOR_ANOMALY,
                     description=f"Isolated sensor anomaly or localized fault on {target.sensor_id}.",
                     confidence=0.70,
                     supporting_evidence=tuple(sup),
                     contradicting_evidence=tuple(con),
-                    severity=AnomalySeverity.LOW if target.deviation_sigma < 3.0 else AnomalySeverity.MEDIUM,
+                    severity=AnomalySeverity.LOW
+                    if target.deviation_sigma < 3.0
+                    else AnomalySeverity.MEDIUM,
                 )
                 hypotheses.append(hyp)
 
@@ -259,14 +303,26 @@ class DiagnosticService:
         # Thermal Subsystem
         thermal_devs = [e for e in by_subsystem.get("thermal", []) if e.deviation_sigma >= 1.5]
         if len(thermal_devs) >= self._config.subsystem_correlation_min_sensors or (
-            len(thermal_devs) >= 1 and any(e.trend == TrendDirection.INCREASING for e in thermal_devs) and context.max_persistence >= 4
+            len(thermal_devs) >= 1
+            and any(e.trend == TrendDirection.INCREASING for e in thermal_devs)
+            and context.max_persistence >= 4
         ):
             conf = 0.65 + min(0.20, 0.05 * len(thermal_devs))
-            sup = [f"{e.sensor_id} elevated ({e.deviation_sigma}σ, trend: {e.trend.value})" for e in thermal_devs]
+            sup = [
+                f"{e.sensor_id} elevated ({e.deviation_sigma}σ, trend: {e.trend.value})"
+                for e in thermal_devs
+            ]
             con = []
-            nominal_mech = [e for e in by_subsystem.get("mechanical", []) if e.deviation_sigma < 1.0]
+            nominal_mech = [
+                e for e in by_subsystem.get("mechanical", []) if e.deviation_sigma < 1.0
+            ]
             if nominal_mech:
-                con.extend([f"Mechanical sensor {m.sensor_id} remains nominal ({m.deviation_sigma}σ)" for m in nominal_mech[:2]])
+                con.extend(
+                    [
+                        f"Mechanical sensor {m.sensor_id} remains nominal ({m.deviation_sigma}σ)"
+                        for m in nominal_mech[:2]
+                    ]
+                )
             hypotheses.append(
                 DiagnosticHypothesis(
                     category=HypothesisCategory.THERMAL_DEGRADATION,
@@ -274,17 +330,24 @@ class DiagnosticService:
                     confidence=round(conf, 2),
                     supporting_evidence=tuple(sup),
                     contradicting_evidence=tuple(con),
-                    severity=AnomalySeverity.HIGH if any(e.deviation_sigma >= 3.0 for e in thermal_devs) else AnomalySeverity.MEDIUM,
+                    severity=AnomalySeverity.HIGH
+                    if any(e.deviation_sigma >= 3.0 for e in thermal_devs)
+                    else AnomalySeverity.MEDIUM,
                 )
             )
 
         # Mechanical Subsystem (Vibration, Speed, RPM)
         mech_devs = [e for e in by_subsystem.get("mechanical", []) if e.deviation_sigma >= 1.5]
         if len(mech_devs) >= self._config.subsystem_correlation_min_sensors or (
-            len(mech_devs) >= 1 and any(e.trend != TrendDirection.STABLE for e in mech_devs) and context.max_persistence >= 4
+            len(mech_devs) >= 1
+            and any(e.trend != TrendDirection.STABLE for e in mech_devs)
+            and context.max_persistence >= 4
         ):
             conf = 0.65 + min(0.20, 0.05 * len(mech_devs))
-            sup = [f"{e.sensor_id} elevated ({e.deviation_sigma}σ, trend: {e.trend.value})" for e in mech_devs]
+            sup = [
+                f"{e.sensor_id} elevated ({e.deviation_sigma}σ, trend: {e.trend.value})"
+                for e in mech_devs
+            ]
             con = []
             hypotheses.append(
                 DiagnosticHypothesis(
@@ -293,7 +356,9 @@ class DiagnosticService:
                     confidence=round(conf, 2),
                     supporting_evidence=tuple(sup),
                     contradicting_evidence=tuple(con),
-                    severity=AnomalySeverity.HIGH if any(e.deviation_sigma >= 3.0 for e in mech_devs) else AnomalySeverity.MEDIUM,
+                    severity=AnomalySeverity.HIGH
+                    if any(e.deviation_sigma >= 3.0 for e in mech_devs)
+                    else AnomalySeverity.MEDIUM,
                 )
             )
 
@@ -303,7 +368,10 @@ class DiagnosticService:
             len(press_devs) >= 1 and context.max_persistence >= 4
         ):
             conf = 0.65 + min(0.20, 0.05 * len(press_devs))
-            sup = [f"{e.sensor_id} deviated ({e.deviation_sigma}σ, trend: {e.trend.value})" for e in press_devs]
+            sup = [
+                f"{e.sensor_id} deviated ({e.deviation_sigma}σ, trend: {e.trend.value})"
+                for e in press_devs
+            ]
             con = []
             hypotheses.append(
                 DiagnosticHypothesis(
@@ -312,7 +380,9 @@ class DiagnosticService:
                     confidence=round(conf, 2),
                     supporting_evidence=tuple(sup),
                     contradicting_evidence=tuple(con),
-                    severity=AnomalySeverity.HIGH if any(e.deviation_sigma >= 3.0 for e in press_devs) else AnomalySeverity.MEDIUM,
+                    severity=AnomalySeverity.HIGH
+                    if any(e.deviation_sigma >= 3.0 for e in press_devs)
+                    else AnomalySeverity.MEDIUM,
                 )
             )
 
@@ -341,11 +411,56 @@ class DiagnosticService:
         groups: dict[str, list[DiagnosticEvidence]] = defaultdict(list)
         for e in evidence_list:
             text = f"{e.sensor_id} {e.measurement_type}".lower()
-            if any(k in text for k in ("temp", "t1", "t2", "t3", "t4", "t5", "t24", "t30", "t50", "egt", "heat", "thermal")):
+            if any(
+                k in text
+                for k in (
+                    "temp",
+                    "t1",
+                    "t2",
+                    "t3",
+                    "t4",
+                    "t5",
+                    "t24",
+                    "t30",
+                    "t50",
+                    "egt",
+                    "heat",
+                    "thermal",
+                )
+            ):
                 groups["thermal"].append(e)
-            elif any(k in text for k in ("vib", "rpm", "speed", "acc", "velocity", "current", "bearing", "n1", "n2", "mech")):
+            elif any(
+                k in text
+                for k in (
+                    "vib",
+                    "rpm",
+                    "speed",
+                    "acc",
+                    "velocity",
+                    "current",
+                    "bearing",
+                    "n1",
+                    "n2",
+                    "mech",
+                )
+            ):
                 groups["mechanical"].append(e)
-            elif any(k in text for k in ("press", "flow", "p1", "p2", "p3", "p30", "p50", "psi", "bar", "hydraulic", "fuel")):
+            elif any(
+                k in text
+                for k in (
+                    "press",
+                    "flow",
+                    "p1",
+                    "p2",
+                    "p3",
+                    "p30",
+                    "p50",
+                    "psi",
+                    "bar",
+                    "hydraulic",
+                    "fuel",
+                )
+            ):
                 groups["pressure_flow"].append(e)
             else:
                 groups["general"].append(e)
@@ -388,9 +503,15 @@ class DiagnosticService:
             and primary_hyp.category != HypothesisCategory.NOMINAL
         ):
             status = DiagnosticStatus.MULTIPLE_POSSIBLE_CAUSES
-        elif context.operational_state == OperationalState.CRITICAL or primary_hyp.severity in (AnomalySeverity.HIGH, AnomalySeverity.CRITICAL):
+        elif context.operational_state == OperationalState.CRITICAL or primary_hyp.severity in (
+            AnomalySeverity.HIGH,
+            AnomalySeverity.CRITICAL,
+        ):
             status = DiagnosticStatus.LIKELY_DEGRADATION
-        elif context.operational_state == OperationalState.DEGRADING or context.anomaly_status == AnomalyStatus.DEGRADATION_DETECTED:
+        elif (
+            context.operational_state == OperationalState.DEGRADING
+            or context.anomaly_status == AnomalyStatus.DEGRADATION_DETECTED
+        ):
             status = DiagnosticStatus.LIKELY_DEGRADATION
         else:
             status = DiagnosticStatus.INVESTIGATING
@@ -401,7 +522,7 @@ class DiagnosticService:
             key=lambda s: ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"].index(s.value),
         )
 
-        finding = f"Primary finding: {primary_hyp.description} (Risk: {risk.value}, Confidence: {diagnostic_conf*100:.0f}%)"
+        finding = f"Primary finding: {primary_hyp.description} (Risk: {risk.value}, Confidence: {diagnostic_conf * 100:.0f}%)"
 
         return status, risk, primary_hyp, finding, diagnostic_conf
 

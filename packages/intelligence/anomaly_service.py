@@ -1,4 +1,4 @@
-﻿"""
+"""
 Aegis Intelligence — Anomaly & Degradation Detection Service (P2.S2).
 Detects multi-sensor statistical anomalies and progressive degradation
 with persistence tracking, severity scoring, and inspectable evidence.
@@ -12,6 +12,7 @@ Architecture:
 
 Pure domain service. No SQL. Fully deterministic.
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,7 +20,6 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 
 from domain.entities import Observation, QualityFlag
 from domain.intelligence import (
@@ -44,13 +44,16 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class AnomalyDetectorConfig:
     """Tunable parameters for anomaly and degradation detection."""
-    baseline_window: int = 50          # Number of early observations to define nominal baseline
-    eval_window: int = 20              # Number of recent observations for evaluation
-    min_baseline_samples: int = 10     # Minimum GOOD observations needed for valid baseline
+
+    baseline_window: int = 50  # Number of early observations to define nominal baseline
+    eval_window: int = 20  # Number of recent observations for evaluation
+    min_baseline_samples: int = 10  # Minimum GOOD observations needed for valid baseline
     deviation_threshold_sigma: float = 2.0  # Sigma threshold for confirmed deviation
     early_drift_threshold_sigma: float = 1.2  # Sigma threshold for trending early drift
-    severe_threshold_sigma: float = 3.5     # Sigma threshold for severe deviation
-    persistence_threshold: int = 5     # Minimum consecutive cycles deviating to confirm persistent degradation
+    severe_threshold_sigma: float = 3.5  # Sigma threshold for severe deviation
+    persistence_threshold: int = (
+        5  # Minimum consecutive cycles deviating to confirm persistent degradation
+    )
     trend_slope_threshold: float = 0.001
     observation_limit: int = 5000
 
@@ -172,7 +175,9 @@ class AnomalyDetectionService:
         if observations and observations[0].metadata.get("sensor_name"):
             measurement_type = observations[0].metadata["sensor_name"]
         elif "-" in sensor_id:
-            measurement_type = sensor_id.split("-")[1] if len(sensor_id.split("-")) > 1 else "unknown"
+            measurement_type = (
+                sensor_id.split("-")[1] if len(sensor_id.split("-")) > 1 else "unknown"
+            )
 
         # Baseline: first N good observations
         baseline_obs = good_obs[: cfg.baseline_window]
@@ -187,7 +192,9 @@ class AnomalyDetectionService:
 
         # Current window: recent valid observations (GOOD + UNCERTAIN)
         current_obs = observations[-cfg.eval_window :]
-        current_valid = [o for o in current_obs if o.quality in (QualityFlag.GOOD, QualityFlag.UNCERTAIN)]
+        current_valid = [
+            o for o in current_obs if o.quality in (QualityFlag.GOOD, QualityFlag.UNCERTAIN)
+        ]
         current_vals = [o.value for o in current_valid]
 
         if not current_vals:
@@ -209,9 +216,12 @@ class AnomalyDetectionService:
 
         # Base contribution score (sigmoid curve)
         base_contrib = 1.0 / (1.0 + math.exp(-1.2 * (dev_sigma - 2.5)))
-        
+
         # Boost for early active monotonic trends (emerging drift)
-        if trend in (TrendDirection.INCREASING, TrendDirection.DECREASING) and dev_sigma >= cfg.early_drift_threshold_sigma:
+        if (
+            trend in (TrendDirection.INCREASING, TrendDirection.DECREASING)
+            and dev_sigma >= cfg.early_drift_threshold_sigma
+        ):
             trend_contrib = 0.30 + 0.20 * min(1.0, (dev_sigma - cfg.early_drift_threshold_sigma))
             contribution_score = max(base_contrib, trend_contrib)
         else:
@@ -222,7 +232,10 @@ class AnomalyDetectionService:
             reason = f"Severe deviation of {dev_sigma:.2f}σ from baseline (persisted {persistence_count} cycles)"
         elif dev_sigma >= cfg.deviation_threshold_sigma:
             reason = f"Confirmed deviation of {dev_sigma:.2f}σ from baseline (trend: {trend.value})"
-        elif dev_sigma >= cfg.early_drift_threshold_sigma and trend in (TrendDirection.INCREASING, TrendDirection.DECREASING):
+        elif dev_sigma >= cfg.early_drift_threshold_sigma and trend in (
+            TrendDirection.INCREASING,
+            TrendDirection.DECREASING,
+        ):
             reason = f"Early trending drift of {dev_sigma:.2f}σ with active {trend.value} trend"
         else:
             reason = f"Nominal behavior ({dev_sigma:.2f}σ deviation)"
@@ -250,17 +263,23 @@ class AnomalyDetectionService:
         cfg = self._config
 
         # Identify deviating, trending early drift, and severe signals
-        confirmed_deviating = [e for e in evidence_list if e.deviation_sigma >= cfg.deviation_threshold_sigma]
+        confirmed_deviating = [
+            e for e in evidence_list if e.deviation_sigma >= cfg.deviation_threshold_sigma
+        ]
         early_drifting = [
-            e for e in evidence_list
+            e
+            for e in evidence_list
             if e.trend in (TrendDirection.INCREASING, TrendDirection.DECREASING)
             and e.deviation_sigma >= cfg.early_drift_threshold_sigma
         ]
-        all_abnormal = list({e.sensor_id: e for e in (confirmed_deviating + early_drifting)}.values())
-        
+        all_abnormal = list(
+            {e.sensor_id: e for e in (confirmed_deviating + early_drifting)}.values()
+        )
+
         severe = [e for e in evidence_list if e.deviation_sigma >= cfg.severe_threshold_sigma]
         persistent_degrading = [
-            e for e in confirmed_deviating
+            e
+            for e in confirmed_deviating
             if e.persistence_count >= cfg.persistence_threshold
             or e.trend in (TrendDirection.INCREASING, TrendDirection.DECREASING)
         ]
@@ -304,7 +323,9 @@ class AnomalyDetectionService:
         # Rough Lead Cycles Estimate
         lead_cycles = None
         if status == AnomalyStatus.DEGRADATION_DETECTED and persistent_degrading:
-            mean_pers = sum(e.persistence_count for e in persistent_degrading) / len(persistent_degrading)
+            mean_pers = sum(e.persistence_count for e in persistent_degrading) / len(
+                persistent_degrading
+            )
             lead_cycles = max(5, int(50 - mean_pers))
 
         return AnomalyDetectionResult(
@@ -347,4 +368,3 @@ class AnomalyDetectionService:
             detection_method="Multivariate-Statistical-Residuals-v1",
             metadata={"reason": reason},
         )
-

@@ -1,15 +1,17 @@
-﻿from __future__ import annotations
+from __future__ import annotations
+
 import logging
 import uuid
-from datetime import datetime, timedelta, UTC
-from pathlib import Path
-from typing import Generator
+from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 
-from contracts import TelemetryEnvelope, ObservationPayload, CURRENT_SCHEMA_VERSION
+from contracts import CURRENT_SCHEMA_VERSION, ObservationPayload, TelemetryEnvelope
+
 from apps.dataset_replay.config import DatasetReplayConfig
 from apps.dataset_replay.registration import MAPSS_SENSORS
 
 logger = logging.getLogger("aegis.dataset_replay.adapter")
+
 
 class CmapssAdapter:
     """Parses and maps raw C-MAPSS historical records into Aegis TelemetryEnvelopes."""
@@ -25,7 +27,7 @@ class CmapssAdapter:
         parts = line.strip().split()
         if not parts:
             return None
-        
+
         if len(parts) < 26:
             logger.warning("Row ignored. Expected at least 26 fields, got %d", len(parts))
             return None
@@ -35,7 +37,7 @@ class CmapssAdapter:
                 "unit": int(float(parts[0])),
                 "cycle": int(float(parts[1])),
                 "settings": [float(parts[2]), float(parts[3]), float(parts[4])],
-                "sensors": [float(val) for val in parts[5:26]]
+                "sensors": [float(val) for val in parts[5:26]],
             }
         except (ValueError, TypeError) as err:
             logger.warning("Failed parsing numerical values in row: %s", err)
@@ -48,7 +50,9 @@ class CmapssAdapter:
         device_id = f"engine-{unit:03d}"
 
         # Synthesize timestamp chronologically: Base time + cycle minutes
-        timestamp = self.base_time + timedelta(seconds=(cycle - 1) * self.config.time_increment_seconds)
+        timestamp = self.base_time + timedelta(
+            seconds=(cycle - 1) * self.config.time_increment_seconds
+        )
         timestamp_iso = timestamp.isoformat()
 
         payloads = []
@@ -70,11 +74,7 @@ class CmapssAdapter:
                     value=sensor_val,
                     unit=s_unit,
                     quality=quality,
-                    metadata={
-                        "device_id": device_id,
-                        "cycle": cycle,
-                        "sensor_name": s_name
-                    }
+                    metadata={"device_id": device_id, "cycle": cycle, "sensor_name": s_name},
                 )
             )
 
@@ -83,25 +83,23 @@ class CmapssAdapter:
             source_device_id=device_id,
             sent_at_iso=datetime.now(UTC).isoformat(),  # Ingestion/Sent Wall-Clock Marker
             observations=payloads,
-            metadata={
-                "source": "NASA_CMAPSS_FD001",
-                "cycle": cycle,
-                "settings": row["settings"]
-            }
+            metadata={"source": "NASA_CMAPSS_FD001", "cycle": cycle, "settings": row["settings"]},
         )
 
-    def iter_envelopes(self, limit_units: list[int] | None = None) -> Generator[TelemetryEnvelope, None, None]:
+    def iter_envelopes(
+        self, limit_units: list[int] | None = None
+    ) -> Generator[TelemetryEnvelope, None, None]:
         """Generator streaming TelemetryEnvelopes parsed from dataset file."""
         filepath = self.config.dataset_file_path
         if not filepath.exists():
             raise FileNotFoundError(f"Missing active C-MAPSS dataset file: {filepath}")
 
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             for line in f:
                 parsed = self.parse_row(line)
                 if parsed is None:
                     continue
-                
+
                 # Bounded selection filter
                 if limit_units and parsed["unit"] not in limit_units:
                     continue

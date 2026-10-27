@@ -1,14 +1,13 @@
-﻿"""
-Aegis Phase 2 Sprint 2 — Anomaly & Degradation Detection Showcase.
+"""
+Aegis Phase 2 Sprint 2 Ã¢â‚¬â€ Anomaly & Degradation Detection Showcase.
 Demonstrates:
 1. Operational State & Health Assessment (P2.S1)
 2. Multivariate Statistical Anomaly & Degradation Detection (P2.S2)
 3. Structured, inspectable evidence chain (no black-box models)
 4. Quantitative Ground-Truth Evaluation on NASA C-MAPSS FD001 Turbofan Fleet
 """
+
 import sys
-import uuid
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,13 +16,13 @@ if str(ROOT / "packages") not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from apps.dataset_replay.adapter import CmapssAdapter
 from contracts.mappers import ObservationMapper
-from domain.entities import Observation, QualityFlag
-from domain.intelligence import AnomalySeverity, AnomalyStatus
+from domain.intelligence import AnomalyStatus
 from domain.repository import InMemoryTelemetryRepository
-from intelligence.anomaly_service import AnomalyDetectionService, AnomalyDetectorConfig
+from intelligence.anomaly_service import AnomalyDetectionService
 from intelligence.health_service import HealthAssessmentService
+
+from apps.dataset_replay.adapter import CmapssAdapter
 
 
 def print_banner(text: str) -> None:
@@ -33,28 +32,50 @@ def print_banner(text: str) -> None:
 
 
 def print_unified_dashboard_card(health, anomaly) -> None:
-    print("\n┌─────────────────────────────────────────────────────────────────────────┐")
-    print(f"│ ASSET:  {health.asset_id:<22s}  DEVICE: {health.device_id:<29s}│")
-    print("├─────────────────────────────────────────────────────────────────────────┤")
-    print(f"│ Operational State:  {health.operational_state.value:<16s}  Health Score:    {health.health_score:6.2f} / 100    │")
-    print(f"│ Anomaly Status:     {anomaly.status.value:<16s}  Anomaly Score:   {anomaly.anomaly_score:6.2f} / 1.00     │")
-    print(f"│ Severity:           {anomaly.severity.value:<16s}  Confidence:      {anomaly.confidence * 100:5.1f}%          │")
-    print(f"│ Detection Method:   {anomaly.detection_method:<48s}│")
+    print(
+        "\nÃ¢â€Å’Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â"
+    )
+    print(f"Ã¢â€â€š ASSET:  {health.asset_id:<22s}  DEVICE: {health.device_id:<29s}Ã¢â€â€š")
+    print(
+        "Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â¤"
+    )
+    print(
+        f"Ã¢â€â€š Operational State:  {health.operational_state.value:<16s}  Health Score:    {health.health_score:6.2f} / 100    Ã¢â€â€š"
+    )
+    print(
+        f"Ã¢â€â€š Anomaly Status:     {anomaly.status.value:<16s}  Anomaly Score:   {anomaly.anomaly_score:6.2f} / 1.00     Ã¢â€â€š"
+    )
+    print(
+        f"Ã¢â€â€š Severity:           {anomaly.severity.value:<16s}  Confidence:      {anomaly.confidence * 100:5.1f}%          Ã¢â€â€š"
+    )
+    print(f"Ã¢â€â€š Detection Method:   {anomaly.detection_method:<48s}Ã¢â€â€š")
     if anomaly.lead_cycles_estimate:
-        print(f"│ Lead Cycles Est.:   {anomaly.lead_cycles_estimate:<10d} cycles                                    │")
-    print("├─────────────────────────────────────────────────────────────────────────┤")
-    print(f"│ Evidence Summary:   {health.evidence_summary:<52s}│")
-    print("└─────────────────────────────────────────────────────────────────────────┘")
+        print(
+            f"Ã¢â€â€š Lead Cycles Est.:   {anomaly.lead_cycles_estimate:<10d} cycles                                    Ã¢â€â€š"
+        )
+    print(
+        "Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â¤"
+    )
+    print(f"Ã¢â€â€š Evidence Summary:   {health.evidence_summary:<52s}Ã¢â€â€š")
+    print(
+        "Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Ëœ"
+    )
 
     print("\n  Top Contributing Signals & Explainable Evidence:")
     for e in anomaly.evidence_list[:6]:
-        flag = "🔴 CRITICAL" if e.deviation_sigma >= 3.5 else ("🟡 DEVIATED" if e.deviation_sigma >= 2.0 else "🟢 NOMINAL")
-        print(f"    • {e.sensor_id:32s} | Dev: {e.deviation_sigma:5.2f}σ | Trend: {e.trend.value:10s} | Persist: {e.persistence_count:2d}c | {flag}")
+        flag = (
+            "Ã°Å¸â€Â´ CRITICAL"
+            if e.deviation_sigma >= 3.5
+            else ("Ã°Å¸Å¸Â¡ DEVIATED" if e.deviation_sigma >= 2.0 else "Ã°Å¸Å¸Â¢ NOMINAL")
+        )
+        print(
+            f"    Ã¢â‚¬Â¢ {e.sensor_id:32s} | Dev: {e.deviation_sigma:5.2f}ÃÆ’ | Trend: {e.trend.value:10s} | Persist: {e.persistence_count:2d}c | {flag}"
+        )
         print(f"      Reason: {e.reason}")
 
 
 def run_showcase() -> None:
-    print_banner("AEGIS INTELLIGENCE LAYER — P2.S1 + P2.S2 UNIFIED SHOWCASE")
+    print_banner("AEGIS INTELLIGENCE LAYER Ã¢â‚¬â€ P2.S1 + P2.S2 UNIFIED SHOWCASE")
 
     # 1. NASA C-MAPSS FD001 Turbofan Engine 001 Real Lifecycle
     print_banner("1. NASA C-MAPSS FD001 REAL RUN-TO-FAILURE LIFECYCLE (Engine-001)")
@@ -96,7 +117,6 @@ def run_showcase() -> None:
     all_envelopes = list(adapter.iter_envelopes(limit_units=list(range(1, 11))))
     engine_envelopes = {}
     for env in all_envelopes:
-        u = env.metadata.get("settings")  # get device_id
         dev = env.source_device_id
         if dev not in engine_envelopes:
             engine_envelopes[dev] = []
@@ -143,12 +163,14 @@ def run_showcase() -> None:
     mean_lead = sum(lead_times) / max(len(lead_times), 1)
 
     print("\n  GROUND-TRUTH BENCHMARK RESULTS (NASA C-MAPSS FD001):")
-    print(f"    • Evaluated Units:        {len(engine_envelopes)} Turbofan Engines")
-    print(f"    • Precision:              {precision * 100:.1f}%")
-    print(f"    • Recall:                 {recall * 100:.1f}%")
-    print(f"    • F1-Score:               {f1 * 100:.1f}%")
-    print(f"    • False Positive Rate:    {(false_positives / max(true_negatives + false_positives, 1)) * 100:.1f}%")
-    print(f"    • Mean Detection Lead:    ~{mean_lead:.1f} cycles prior to failure")
+    print(f"    Ã¢â‚¬Â¢ Evaluated Units:        {len(engine_envelopes)} Turbofan Engines")
+    print(f"    Ã¢â‚¬Â¢ Precision:              {precision * 100:.1f}%")
+    print(f"    Ã¢â‚¬Â¢ Recall:                 {recall * 100:.1f}%")
+    print(f"    Ã¢â‚¬Â¢ F1-Score:               {f1 * 100:.1f}%")
+    print(
+        f"    Ã¢â‚¬Â¢ False Positive Rate:    {(false_positives / max(true_negatives + false_positives, 1)) * 100:.1f}%"
+    )
+    print(f"    Ã¢â‚¬Â¢ Mean Detection Lead:    ~{mean_lead:.1f} cycles prior to failure")
 
     print("\n" + "=" * 75)
     print("  SHOWCASE CONCLUSION: VERIFIED OPERATIONAL INTELLIGENCE PLATFORM")

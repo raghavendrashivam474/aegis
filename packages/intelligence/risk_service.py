@@ -1,4 +1,4 @@
-﻿"""
+"""
 Aegis Intelligence — Operational Risk & Prioritization Service (P2.S4).
 Synthesizes Health (P2.S1), Anomaly (P2.S2), and Diagnostic (P2.S3) snapshots
 into prioritized operational findings, explainable backwards traceability chains,
@@ -11,6 +11,7 @@ Architecture:
 
 Pure application service. Zero SQL. Fully deterministic.
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,7 +23,6 @@ from domain.intelligence import (
     AnomalyDetectionResult,
     AnomalySeverity,
     AnomalyStatus,
-    DiagnosticHypothesis,
     DiagnosticResult,
     DiagnosticStatus,
     HealthAssessment,
@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class RiskConfig:
     """Tunable thresholds for operational risk prioritization."""
+
     critical_health_threshold: float = 50.0
     degrading_health_threshold: float = 75.0
     high_anomaly_threshold: float = 0.70
@@ -100,7 +101,9 @@ class OperationalRiskService:
 
         # Step 7: Composite operational confidence
         composite_conf = round(
-            (0.35 * health.confidence) + (0.35 * anomaly.confidence) + (0.30 * diagnostic.confidence),
+            (0.35 * health.confidence)
+            + (0.35 * anomaly.confidence)
+            + (0.30 * diagnostic.confidence),
             4,
         )
 
@@ -165,35 +168,38 @@ class OperationalRiskService:
 
         # Rule 3: Critical Priority Condition
         if (
-            (health.health_score < cfg.critical_health_threshold or risk == AnomalySeverity.CRITICAL)
+            (
+                health.health_score < cfg.critical_health_threshold
+                or risk == AnomalySeverity.CRITICAL
+            )
             and anomaly.status == AnomalyStatus.DEGRADATION_DETECTED
             and diag_conf >= cfg.min_confidence_for_critical
         ):
             return OperationalPriority.CRITICAL
 
-        if (
-            health.operational_state == OperationalState.CRITICAL
-            and risk in (AnomalySeverity.HIGH, AnomalySeverity.CRITICAL)
+        if health.operational_state == OperationalState.CRITICAL and risk in (
+            AnomalySeverity.HIGH,
+            AnomalySeverity.CRITICAL,
         ):
             return OperationalPriority.CRITICAL
 
         # Rule 4: High Priority Condition
         if (
-            (health.health_score < cfg.degrading_health_threshold or risk == AnomalySeverity.HIGH)
-            and diag_conf >= cfg.min_confidence_for_high
-        ):
+            health.health_score < cfg.degrading_health_threshold or risk == AnomalySeverity.HIGH
+        ) and diag_conf >= cfg.min_confidence_for_high:
             return OperationalPriority.HIGH
 
-        if (
-            diagnostic.status == DiagnosticStatus.LIKELY_DEGRADATION
-            and risk in (AnomalySeverity.MEDIUM, AnomalySeverity.HIGH)
+        if diagnostic.status == DiagnosticStatus.LIKELY_DEGRADATION and risk in (
+            AnomalySeverity.MEDIUM,
+            AnomalySeverity.HIGH,
         ):
             return OperationalPriority.HIGH
 
         # Rule 5: Medium Priority Condition
-        if (
-            risk == AnomalySeverity.MEDIUM
-            or (diagnostic.primary_hypothesis and diagnostic.primary_hypothesis.category == HypothesisCategory.LOCALIZED_SENSOR_ANOMALY)
+        if risk == AnomalySeverity.MEDIUM or (
+            diagnostic.primary_hypothesis
+            and diagnostic.primary_hypothesis.category
+            == HypothesisCategory.LOCALIZED_SENSOR_ANOMALY
         ):
             return OperationalPriority.MEDIUM
 
@@ -219,7 +225,11 @@ class OperationalRiskService:
         category = hyp.category if hyp else HypothesisCategory.UNKNOWN
 
         if priority == OperationalPriority.CRITICAL:
-            lead_info = f" (Estimated lead time to intervention: ~{anomaly.lead_cycles_estimate} cycles)" if anomaly.lead_cycles_estimate else ""
+            lead_info = (
+                f" (Estimated lead time to intervention: ~{anomaly.lead_cycles_estimate} cycles)"
+                if anomaly.lead_cycles_estimate
+                else ""
+            )
             if category == HypothesisCategory.THERMAL_DEGRADATION:
                 return f"Schedule immediate maintenance inspection for thermal subsystem; verify cooling circuits and heat exchanger pathways.{lead_info}"
             elif category == HypothesisCategory.MECHANICAL_DEGRADATION:
@@ -231,7 +241,11 @@ class OperationalRiskService:
             return f"Schedule immediate operational inspection of the affected asset.{lead_info}"
 
         elif priority == OperationalPriority.HIGH:
-            lead_info = f" (Lead estimate: ~{anomaly.lead_cycles_estimate} cycles)" if anomaly.lead_cycles_estimate else ""
+            lead_info = (
+                f" (Lead estimate: ~{anomaly.lead_cycles_estimate} cycles)"
+                if anomaly.lead_cycles_estimate
+                else ""
+            )
             if category == HypothesisCategory.THERMAL_DEGRADATION:
                 return f"Inspect thermal subsystem during next scheduled maintenance window; monitor temperature trends.{lead_info}"
             elif category == HypothesisCategory.MECHANICAL_DEGRADATION:
@@ -245,7 +259,9 @@ class OperationalRiskService:
                 return "Review telemetry and initiate targeted diagnostic checks to isolate competing candidate causes across affected subsystems."
             elif category == HypothesisCategory.LOCALIZED_SENSOR_ANOMALY:
                 return "Review sensor health, wiring, and calibration for the isolated deviating sensor."
-            return "Increase telemetry monitoring frequency and review subsystem operational trends."
+            return (
+                "Increase telemetry monitoring frequency and review subsystem operational trends."
+            )
 
         elif priority == OperationalPriority.LOW:
             if category == HypothesisCategory.TRANSIENT_DISTURBANCE:
@@ -269,7 +285,9 @@ class OperationalRiskService:
                 "description": diagnostic.primary_hypothesis.description,
                 "confidence": diagnostic.primary_hypothesis.confidence,
                 "supporting_evidence": list(diagnostic.primary_hypothesis.supporting_evidence),
-                "contradicting_evidence": list(diagnostic.primary_hypothesis.contradicting_evidence),
+                "contradicting_evidence": list(
+                    diagnostic.primary_hypothesis.contradicting_evidence
+                ),
             }
 
         deviating_signals_trace = [
@@ -315,7 +333,11 @@ class OperationalRiskService:
         anomaly: AnomalyDetectionResult,
     ) -> str:
         """Create a clear, operator-readable summary sentence."""
-        hyp_desc = diagnostic.primary_hypothesis.description if diagnostic.primary_hypothesis else "No abnormal hypotheses"
+        hyp_desc = (
+            diagnostic.primary_hypothesis.description
+            if diagnostic.primary_hypothesis
+            else "No abnormal hypotheses"
+        )
         return (
             f"[{priority.value} PRIORITY] Asset {health.asset_id} ({health.device_id}): "
             f"Health {health.health_score:.1f}/100, State {health.operational_state.value}. "
@@ -329,7 +351,9 @@ class OperationalRiskService:
         diagnostic: DiagnosticResult,
     ) -> OperationalFinding:
         """Produce clean NOMINAL finding."""
-        trace = self._build_traceability_chain(health, anomaly, diagnostic, OperationalPriority.NONE)
+        trace = self._build_traceability_chain(
+            health, anomaly, diagnostic, OperationalPriority.NONE
+        )
         return OperationalFinding(
             asset_id=health.asset_id,
             device_id=health.device_id,

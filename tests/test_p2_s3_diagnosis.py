@@ -1,4 +1,4 @@
-﻿"""
+"""
 Aegis P2.S3 Verification Test Suite.
 Tests deterministic diagnostic reasoning and explainable root-cause hypotheses:
 - S3-NOMINAL: Healthy, stable operating baseline
@@ -11,26 +11,26 @@ Tests deterministic diagnostic reasoning and explainable root-cause hypotheses:
 - S3-DETERMINISM: Evaluation idempotency and reproducibility
 - S3-CMAPSS-REAL: NASA C-MAPSS FD001 run-to-failure lifecycle diagnosis
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from apps.dataset_replay.adapter import CmapssAdapter
 from contracts.mappers import ObservationMapper
 from domain.entities import Observation, QualityFlag
 from domain.intelligence import (
     AnomalySeverity,
-    AnomalyStatus,
     DiagnosticStatus,
     HypothesisCategory,
-    OperationalState,
 )
 from domain.repository import InMemoryTelemetryRepository
 from intelligence.anomaly_service import AnomalyDetectionService
 from intelligence.diagnostic_service import DiagnosticService
 from intelligence.health_service import HealthAssessmentService
+
+from apps.dataset_replay.adapter import CmapssAdapter
 
 
 def _make_observation(
@@ -134,15 +134,22 @@ def test_scenario_s3_correlated_deviation() -> None:
     for cycle in range(51, 71):
         ts = base_time + timedelta(minutes=cycle)
         drift = (cycle - 50) * 1.2
-        repo.save_observation(_make_observation(device_id, "temp_zone1", ts, 100.0 + drift, cycle=cycle))
-        repo.save_observation(_make_observation(device_id, "temp_zone2", ts, 105.0 + drift, cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "temp_zone1", ts, 100.0 + drift, cycle=cycle)
+        )
+        repo.save_observation(
+            _make_observation(device_id, "temp_zone2", ts, 105.0 + drift, cycle=cycle)
+        )
         repo.save_observation(_make_observation(device_id, "vib_blower", ts, 2.0, cycle=cycle))
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-furnace")
     anomaly = AnomalyDetectionService(repo).detect(device_id, "asset-furnace")
     diagnostic = DiagnosticService().diagnose(health, anomaly)
 
-    assert diagnostic.status in (DiagnosticStatus.LIKELY_DEGRADATION, DiagnosticStatus.INVESTIGATING)
+    assert diagnostic.status in (
+        DiagnosticStatus.LIKELY_DEGRADATION,
+        DiagnosticStatus.INVESTIGATING,
+    )
     assert diagnostic.primary_hypothesis is not None
     assert diagnostic.primary_hypothesis.category == HypothesisCategory.THERMAL_DEGRADATION
     assert len(diagnostic.primary_hypothesis.supporting_evidence) >= 2
@@ -163,10 +170,18 @@ def test_scenario_s3_transient() -> None:
         repo.save_observation(_make_observation(device_id, "vib-m4", ts, 1.5, cycle=cycle))
 
     # 51-52: Brief spike on cycle 52 only
-    repo.save_observation(_make_observation(device_id, "temp-m4", base_time + timedelta(minutes=51), 50.0, cycle=51))
-    repo.save_observation(_make_observation(device_id, "vib-m4", base_time + timedelta(minutes=51), 1.5, cycle=51))
-    repo.save_observation(_make_observation(device_id, "temp-m4", base_time + timedelta(minutes=52), 75.0, cycle=52))
-    repo.save_observation(_make_observation(device_id, "vib-m4", base_time + timedelta(minutes=52), 1.5, cycle=52))
+    repo.save_observation(
+        _make_observation(device_id, "temp-m4", base_time + timedelta(minutes=51), 50.0, cycle=51)
+    )
+    repo.save_observation(
+        _make_observation(device_id, "vib-m4", base_time + timedelta(minutes=51), 1.5, cycle=51)
+    )
+    repo.save_observation(
+        _make_observation(device_id, "temp-m4", base_time + timedelta(minutes=52), 75.0, cycle=52)
+    )
+    repo.save_observation(
+        _make_observation(device_id, "vib-m4", base_time + timedelta(minutes=52), 1.5, cycle=52)
+    )
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-motor")
     anomaly = AnomalyDetectionService(repo).detect(device_id, "asset-motor")
@@ -195,9 +210,15 @@ def test_scenario_s3_persistent() -> None:
     for cycle in range(51, 86):
         ts = base_time + timedelta(minutes=cycle)
         drift = cycle - 50
-        repo.save_observation(_make_observation(device_id, "temp-t5", ts, 80.0 + (drift * 1.5), cycle=cycle))
-        repo.save_observation(_make_observation(device_id, "vib-t5", ts, 2.0 + (drift * 0.2), cycle=cycle))
-        repo.save_observation(_make_observation(device_id, "press-t5", ts, 30.0 - (drift * 0.5), cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "temp-t5", ts, 80.0 + (drift * 1.5), cycle=cycle)
+        )
+        repo.save_observation(
+            _make_observation(device_id, "vib-t5", ts, 2.0 + (drift * 0.2), cycle=cycle)
+        )
+        repo.save_observation(
+            _make_observation(device_id, "press-t5", ts, 30.0 - (drift * 0.5), cycle=cycle)
+        )
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-turbine")
     anomaly = AnomalyDetectionService(repo).detect(device_id, "asset-turbine")
@@ -249,7 +270,9 @@ def test_scenario_s3_insufficient_data() -> None:
 
     # Only 3 observations
     for i in range(1, 4):
-        repo.save_observation(_make_observation(device_id, "temp-s7", base_time + timedelta(minutes=i), 50.0, cycle=i))
+        repo.save_observation(
+            _make_observation(device_id, "temp-s7", base_time + timedelta(minutes=i), 50.0, cycle=i)
+        )
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-sparse")
     anomaly = AnomalyDetectionService(repo).detect(device_id, "asset-sparse")
@@ -270,8 +293,12 @@ def test_scenario_s3_determinism() -> None:
 
     for cycle in range(1, 60):
         ts = base_time + timedelta(minutes=cycle)
-        repo.save_observation(_make_observation(device_id, "temp-r8", ts, 50.0 + cycle * 0.1, cycle=cycle))
-        repo.save_observation(_make_observation(device_id, "vib-r8", ts, 2.0 + cycle * 0.02, cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "temp-r8", ts, 50.0 + cycle * 0.1, cycle=cycle)
+        )
+        repo.save_observation(
+            _make_observation(device_id, "vib-r8", ts, 2.0 + cycle * 0.02, cycle=cycle)
+        )
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-repeater")
     anomaly = AnomalyDetectionService(repo).detect(device_id, "asset-repeater")

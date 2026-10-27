@@ -1,8 +1,9 @@
-﻿"""
+"""
 Aegis Domain Package.
 Exposes domain entities, aggregates, exceptions, persistence ports,
 and intelligence value objects.
 """
+
 from .entities import (
     Asset,
     Device,

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Aegis P2.S2 Verification Test Suite.
 Tests anomaly and degradation detection across all required scenarios:
 - S2-NORMAL: Nominal operating behavior
@@ -10,6 +10,7 @@ Tests anomaly and degradation detection across all required scenarios:
 - S2-REPLAY: Deterministic detection idempotency
 - S2-GROUND-TRUTH-CMAPSS: Real NASA C-MAPSS FD001 run-to-failure lifecycle
 """
+
 from __future__ import annotations
 
 import random
@@ -17,20 +18,19 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from apps.dataset_replay.adapter import CmapssAdapter
 from contracts.mappers import ObservationMapper
 from domain.entities import Observation, QualityFlag
 from domain.intelligence import (
-    AnomalyDetectionResult,
     AnomalySeverity,
     AnomalyStatus,
-    TrendDirection,
 )
 from domain.repository import InMemoryTelemetryRepository
 from intelligence.anomaly_service import (
     AnomalyDetectionService,
     AnomalyDetectorConfig,
 )
+
+from apps.dataset_replay.adapter import CmapssAdapter
 
 
 def _make_observation(
@@ -57,6 +57,7 @@ def _make_observation(
 # =========================================================================
 # Scenario 1: S2-NORMAL (Nominal Asset Operation)
 # =========================================================================
+
 
 def test_scenario_s2_normal() -> None:
     repo = InMemoryTelemetryRepository()
@@ -87,6 +88,7 @@ def test_scenario_s2_normal() -> None:
 # Scenario 2: S2-EARLY-DEGRADATION (Emerging Drift)
 # =========================================================================
 
+
 def test_scenario_s2_early_degradation() -> None:
     repo = InMemoryTelemetryRepository()
     base_time = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
@@ -99,13 +101,17 @@ def test_scenario_s2_early_degradation() -> None:
     for cycle in range(1, 51):
         ts = base_time + timedelta(minutes=cycle)
         for s_id in sensors:
-            repo.save_observation(_make_observation(device_id, s_id, ts, nominal_vals[s_id], cycle=cycle))
+            repo.save_observation(
+                _make_observation(device_id, s_id, ts, nominal_vals[s_id], cycle=cycle)
+            )
 
     # 51-60: Early mild drift on temp only (approx 2.2 sigma deviation)
     for cycle in range(51, 61):
         ts = base_time + timedelta(minutes=cycle)
         drift = (cycle - 50) * 0.25
-        repo.save_observation(_make_observation(device_id, "temp-b2", ts, 50.0 + drift, cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "temp-b2", ts, 50.0 + drift, cycle=cycle)
+        )
         repo.save_observation(_make_observation(device_id, "vib-b2", ts, 2.0, cycle=cycle))
         repo.save_observation(_make_observation(device_id, "press-b2", ts, 5.0, cycle=cycle))
 
@@ -121,6 +127,7 @@ def test_scenario_s2_early_degradation() -> None:
 # =========================================================================
 # Scenario 3: S2-CLEAR-DEGRADATION (Multi-Signal Persistent Deterioration)
 # =========================================================================
+
 
 def test_scenario_s2_clear_degradation() -> None:
     repo = InMemoryTelemetryRepository()
@@ -138,9 +145,15 @@ def test_scenario_s2_clear_degradation() -> None:
     for cycle in range(51, 86):
         ts = base_time + timedelta(minutes=cycle)
         drift = cycle - 50
-        repo.save_observation(_make_observation(device_id, "temp-hp3", ts, 60.0 + (drift * 1.5), cycle=cycle))
-        repo.save_observation(_make_observation(device_id, "vib-hp3", ts, 1.5 + (drift * 0.2), cycle=cycle))
-        repo.save_observation(_make_observation(device_id, "press-hp3", ts, 150.0 - (drift * 2.0), cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "temp-hp3", ts, 60.0 + (drift * 1.5), cycle=cycle)
+        )
+        repo.save_observation(
+            _make_observation(device_id, "vib-hp3", ts, 1.5 + (drift * 0.2), cycle=cycle)
+        )
+        repo.save_observation(
+            _make_observation(device_id, "press-hp3", ts, 150.0 - (drift * 2.0), cycle=cycle)
+        )
 
     service = AnomalyDetectionService(repo)
     result = service.detect(device_id=device_id, asset_id="asset-hydraulic")
@@ -157,6 +170,7 @@ def test_scenario_s2_clear_degradation() -> None:
 # =========================================================================
 # Scenario 4: S2-NOISY-DATA (Sensor Jitter / White Noise Robustness)
 # =========================================================================
+
 
 def test_scenario_s2_noisy_data() -> None:
     repo = InMemoryTelemetryRepository()
@@ -188,6 +202,7 @@ def test_scenario_s2_noisy_data() -> None:
 # Scenario 5: S2-MISSING-DATA (Sparse Telemetry / Confidence Penalty)
 # =========================================================================
 
+
 def test_scenario_s2_missing_and_corrupted_data() -> None:
     repo = InMemoryTelemetryRepository()
     base_time = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
@@ -209,6 +224,7 @@ def test_scenario_s2_missing_and_corrupted_data() -> None:
 # =========================================================================
 # Scenario 6: S2-RECOVERY (Resolution of Abnormal Status)
 # =========================================================================
+
 
 def test_scenario_s2_recovery() -> None:
     repo = InMemoryTelemetryRepository()
@@ -245,6 +261,7 @@ def test_scenario_s2_recovery() -> None:
 # Scenario 7: S2-REPLAY (Determinism & Idempotency)
 # =========================================================================
 
+
 def test_scenario_s2_replay_determinism() -> None:
     repo = InMemoryTelemetryRepository()
     base_time = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
@@ -252,7 +269,9 @@ def test_scenario_s2_replay_determinism() -> None:
 
     for cycle in range(1, 65):
         ts = base_time + timedelta(minutes=cycle)
-        repo.save_observation(_make_observation(device_id, "speed-t7", ts, 3600.0 + (cycle * 0.5), cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "speed-t7", ts, 3600.0 + (cycle * 0.5), cycle=cycle)
+        )
 
     service = AnomalyDetectionService(repo)
     res1 = service.detect(device_id=device_id, asset_id="asset-turbine")
@@ -268,6 +287,7 @@ def test_scenario_s2_replay_determinism() -> None:
 # =========================================================================
 # Scenario 8: NASA C-MAPSS FD001 Ground-Truth Evaluation
 # =========================================================================
+
 
 def test_scenario_s2_cmapss_ground_truth_evaluation() -> None:
     """Evaluate detector on NASA C-MAPSS Engine-001 run-to-failure lifecycle."""

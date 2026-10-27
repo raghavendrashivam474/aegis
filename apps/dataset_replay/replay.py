@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+from __future__ import annotations
+
 import json
 import logging
 import sys
@@ -14,11 +15,13 @@ if str(ROOT) not in sys.path:
 
 import paho.mqtt.client as mqtt
 from contracts import TelemetryEnvelope
-from apps.dataset_replay.config import DatasetReplayConfig
+
 from apps.dataset_replay.adapter import CmapssAdapter
+from apps.dataset_replay.config import DatasetReplayConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("aegis.dataset_replay.replay")
+
 
 class CmapssReplayEngine:
     """Manages publishing historical C-MAPSS telemetry streams over MQTT to Aegis."""
@@ -34,7 +37,7 @@ class CmapssReplayEngine:
         if hasattr(mqtt, "CallbackAPIVersion"):
             self.client = mqtt.Client(
                 callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-                client_id=self.config.client_id
+                client_id=self.config.client_id,
             )
         else:
             self.client = mqtt.Client(client_id=self.config.client_id)
@@ -42,7 +45,9 @@ class CmapssReplayEngine:
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
 
-        logger.info("Connecting to broker at %s:%d...", self.config.mqtt_host, self.config.mqtt_port)
+        logger.info(
+            "Connecting to broker at %s:%d...", self.config.mqtt_host, self.config.mqtt_port
+        )
         self.client.connect(self.config.mqtt_host, self.config.mqtt_port, keepalive=60)
         self.client.loop_start()
 
@@ -73,29 +78,30 @@ class CmapssReplayEngine:
 
         payload_str = json.dumps(envelope.to_dict())
         topic = f"aegis/telemetry/{envelope.source_device_id}"
-        
+
         info = self.client.publish(topic, payload_str, qos=1)
         info.wait_for_publish()
 
     def start_replay(
-        self,
-        limit_units: list[int] | None = None,
-        delay_seconds: float = 0.1,
-        max_records: int = 0
+        self, limit_units: list[int] | None = None, delay_seconds: float = 0.1, max_records: int = 0
     ) -> int:
         """Parse historical log and replay envelopes in real-time."""
         if not self._connected:
             self.connect()
 
         logger.info("Starting historical stream replay...")
-        logger.info("  Delay: %s sec | Max Records: %s", delay_seconds, max_records if max_records > 0 else "Unlimited")
-        
+        logger.info(
+            "  Delay: %s sec | Max Records: %s",
+            delay_seconds,
+            max_records if max_records > 0 else "Unlimited",
+        )
+
         count = 0
         try:
             for envelope in self.adapter.iter_envelopes(limit_units=limit_units):
                 self.publish_envelope(envelope)
                 count += 1
-                
+
                 if count % 10 == 0:
                     logger.info("Published %d historical envelopes...", count)
 
