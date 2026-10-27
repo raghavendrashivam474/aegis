@@ -56,6 +56,7 @@ markers = [
 # Dataset replay modules use sys.path setup for standalone execution (E402).
 "apps/dataset_replay/registration.py" = ["E402"]
 "apps/dataset_replay/replay.py" = ["E402"]
+"apps/dashboard/app.py" = ["E402", "E501"]
 
 # Test files contain long assertion lines and setup calls that reduce
 # readability when broken across lines (E501).
