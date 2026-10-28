@@ -228,8 +228,9 @@ def test_scenario_e_timestamp_preservation(test_setup):
 def test_scenario_f_end_to_end_replay_and_query(test_setup):
     """Dataset adapter stream processes through pipeline and is queryable via TelemetryQueryService."""
     from pathlib import Path
-    if not Path('datasets/cmapss_fd001/train_FD001.txt').exists():
-        pytest.skip('C-MAPSS dataset file not available in CI environment.')
+
+    if not Path("datasets/cmapss_fd001/train_FD001.txt").exists():
+        pytest.skip("C-MAPSS dataset file not available in CI environment.")
     pipeline = test_setup["pipeline"]
     query_service = test_setup["query_service"]
     adapter = test_setup["adapter"]
