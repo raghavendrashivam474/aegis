@@ -59,6 +59,29 @@ CREATE TABLE IF NOT EXISTS aegis_telemetry_observations (
 CREATE INDEX IF NOT EXISTS idx_telemetry_dev_ts ON aegis_telemetry_observations(device_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_telemetry_sens_ts ON aegis_telemetry_observations(sensor_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON aegis_telemetry_observations(timestamp DESC);
+-- 4. Intelligence Snapshots Table (P4.S2)
+CREATE TABLE IF NOT EXISTS aegis_intelligence_snapshots (
+    snapshot_id VARCHAR(64) PRIMARY KEY,
+    device_id VARCHAR(64) NOT NULL REFERENCES aegis_devices(device_id) ON DELETE CASCADE,
+    asset_id VARCHAR(64) NOT NULL,
+    evaluated_at TIMESTAMPTZ NOT NULL,
+    evaluation_status VARCHAR(32) NOT NULL,
+    operational_state VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN',
+    health_score DOUBLE PRECISION,
+    health JSONB,
+    anomaly JSONB,
+    diagnostic JSONB,
+    finding JSONB,
+    telemetry_start TIMESTAMPTZ,
+    telemetry_end TIMESTAMPTZ,
+    evaluation_duration_ms DOUBLE PRECISION,
+    contract_version VARCHAR(16) NOT NULL DEFAULT 'v1',
+    errors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    persisted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_snapshot_device_eval ON aegis_intelligence_snapshots(device_id, evaluated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_snapshot_asset_eval ON aegis_intelligence_snapshots(asset_id, evaluated_at DESC);
 """
 
 
