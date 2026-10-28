@@ -1,13 +1,11 @@
 """
-Aegis Operational Intelligence Dashboard (P4.S1).
-Exposes the full intelligence pipeline (Health, Anomaly, Diagnostic, Risk)
-through an operator-facing Streamlit interface.
-
+Aegis Operational Intelligence Dashboard (P4.S2).
+Exposes fleet and asset intelligence through persisted snapshots.
 Architecture:
+    UI -> SnapshotQueryService -> SnapshotRepository -> PostgreSQL
+    UI -> EvaluationService (triggers pipeline on demand)
     UI -> TelemetryQueryService -> TelemetryRepository -> PostgreSQL
-    UI -> Intelligence Services (pure computation over repository)
-    No domain logic in UI. No hardcoded thresholds. No fabricated data.
-    Advisory only â€” no autonomous actuation.
+    No intelligence computation in UI layer. Advisory only.
 """
 
 from __future__ import annotations
@@ -23,19 +21,21 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import streamlit as st
-from intelligence.anomaly_service import AnomalyDetectionService
-from intelligence.diagnostic_service import DiagnosticService
-from intelligence.health_service import HealthAssessmentService
-from intelligence.risk_service import OperationalRiskService
 
-from apps.backend.postgres_adapter import PostgresDeviceRegistry
+from apps.backend.evaluation_service import IntelligenceEvaluationService
+from apps.backend.postgres_adapter import (
+    PostgresConnectionPool,
+    PostgresDeviceRegistry,
+    PostgresSnapshotRepository,
+    PostgresTelemetryRepository,
+)
 from apps.backend.query_service import TelemetryQueryService
+from apps.backend.snapshot_query_service import SnapshotQueryService
 
-# â”€â”€ Connection Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Connection Helpers ---------------------------------------------------
 
 
 def _resolve_database_url() -> str:
-    """Resolve database URL from st.secrets, environment, or default."""
     try:
         if "AEGIS_DATABASE_URL" in st.secrets:
             return str(st.secrets["AEGIS_DATABASE_URL"])
@@ -48,85 +48,36 @@ def _resolve_database_url() -> str:
 
 
 @st.cache_resource
-def _get_query_service(db_url: str) -> TelemetryQueryService | None:
+def _get_pool(db_url: str):
     try:
-        return TelemetryQueryService.create_default(db_url)
+        return PostgresConnectionPool(db_url, min_size=1, max_size=5)
     except Exception:
         return None
 
 
 @st.cache_resource
-def _get_registry(db_url: str) -> PostgresDeviceRegistry | None:
+def _get_services(db_url: str):
+    pool = _get_pool(db_url)
+    if pool is None:
+        return None
     try:
-        return PostgresDeviceRegistry(db_url)
+        telemetry_repo = PostgresTelemetryRepository(pool=pool)
+        snapshot_repo = PostgresSnapshotRepository(pool=pool)
+        registry = PostgresDeviceRegistry(pool=pool)
+        query_svc = TelemetryQueryService(telemetry_repo)
+        snapshot_qry = SnapshotQueryService(snapshot_repo)
+        eval_svc = IntelligenceEvaluationService(telemetry_repo, snapshot_repo)
+        return {
+            "registry": registry,
+            "query_svc": query_svc,
+            "snapshot_qry": snapshot_qry,
+            "eval_svc": eval_svc,
+        }
     except Exception:
         return None
 
 
-# â”€â”€ Intelligence Pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-
-@st.cache_data(ttl=30)
-def _compute_asset_intelligence(device_id: str, db_url: str) -> dict:
-    """Run the full intelligence pipeline for a single asset.
-
-    Each stage is independent: a failure in one does not prevent
-    the others from being attempted where possible.
-    """
-    result: dict = {
-        "device_id": device_id,
-        "health": None,
-        "anomaly": None,
-        "diagnostic": None,
-        "finding": None,
-        "errors": [],
-    }
-    try:
-        qs = TelemetryQueryService.create_default(db_url)
-        repo = qs.repository
-    except Exception as exc:
-        result["errors"].append(f"Repository unavailable: {exc}")
-        return result
-
-    asset_id = device_id
-
-    # P2.S1 â€” Health Assessment
-    try:
-        result["health"] = HealthAssessmentService(repo).assess(device_id, asset_id)
-    except Exception as exc:
-        result["errors"].append(f"Health: {exc}")
-
-    # P2.S2 â€” Anomaly & Degradation Detection
-    try:
-        result["anomaly"] = AnomalyDetectionService(repo).detect(device_id, asset_id)
-    except Exception as exc:
-        result["errors"].append(f"Anomaly: {exc}")
-
-    # P2.S3 â€” Diagnostic (requires health + anomaly)
-    if result["health"] and result["anomaly"]:
-        try:
-            result["diagnostic"] = DiagnosticService().diagnose(
-                result["health"],
-                result["anomaly"],
-            )
-        except Exception as exc:
-            result["errors"].append(f"Diagnostic: {exc}")
-
-    # P2.S4 â€” Risk Prioritization (requires all upstream)
-    if result["health"] and result["anomaly"] and result["diagnostic"]:
-        try:
-            result["finding"] = OperationalRiskService().evaluate(
-                result["health"],
-                result["anomaly"],
-                result["diagnostic"],
-            )
-        except Exception as exc:
-            result["errors"].append(f"Risk: {exc}")
-
-    return result
-
-
-# â”€â”€ Display Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Display Helpers ------------------------------------------------------
 
 
 def _state_icon(state: str) -> str:
@@ -148,8 +99,20 @@ def _priority_icon(priority: str) -> str:
     }.get(priority, "\u26aa")
 
 
+def _status_badge(status: str) -> str:
+    badges = {
+        "current": "\U0001f7e2 Current",
+        "stale": "\U0001f7e1 Stale",
+        "no_snapshot": "\u26aa No Data",
+        "evaluation_failed": "\U0001f534 Failed",
+        "partial_failure": "\U0001f7e0 Partial",
+        "insufficient_evidence": "\u26aa Insufficient",
+        "query_error": "\U0001f534 DB Error",
+    }
+    return badges.get(status, f"\u26aa {status}")
+
+
 def _safe_val(obj, attr: str, fmt: str = "{}") -> str:
-    """Safely extract a nested attribute value for display."""
     if obj is None:
         return "\u2014"
     try:
@@ -161,104 +124,126 @@ def _safe_val(obj, attr: str, fmt: str = "{}") -> str:
         return "\u2014"
 
 
-# â”€â”€ Page Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Sidebar --------------------------------------------------------------
 
-st.set_page_config(
-    page_title="Aegis \u2014 Operational Intelligence",
-    page_icon="\U0001f6e1\ufe0f",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
+st.set_page_config(page_title="Aegis Intelligence", layout="wide")
 db_url = _resolve_database_url()
-qs = _get_query_service(db_url)
-registry = _get_registry(db_url)
+services = _get_services(db_url)
 
 with st.sidebar:
-    st.title("\U0001f6e1\ufe0f Aegis")
-    st.markdown("**Operational Intelligence**")
-    st.divider()
-
-    st.markdown("### Connection Status")
-    devices: list = []
-    if qs and registry:
+    st.header("\U0001f6e1\ufe0f Aegis")
+    if services:
+        st.success("\U0001f7e2 PostgreSQL Connected")
         try:
-            devices = registry.list_devices()
-            st.success(f"\U0001f7e3 PostgreSQL ({len(devices)} devices)")
+            devices = services["registry"].list_devices()
+            st.caption(f"{len(devices)} registered devices")
         except Exception:
-            st.error("\U0001f534 PostgreSQL query failed")
+            devices = []
+            st.warning("Device registry unavailable")
     else:
         st.error("\U0001f534 PostgreSQL Disconnected")
         st.caption(
             "Start infrastructure:\n"
-            "1. `docker compose up -d`\n"
-            "2. `python -m apps.backend.seed_devices`\n"
+            "1. docker compose up -d\n"
+            "2. python -m apps.backend.seed_devices\n"
             "3. Ingest telemetry data"
         )
-
+        devices = []
     st.divider()
     auto_refresh = st.toggle("\u26a1 Auto-Refresh", value=False)
     if auto_refresh:
         poll_rate = st.slider("Interval (sec)", 5, 60, 15, 5)
-
     st.divider()
     st.caption("Advisory only. No autonomous actuation.")
 
-# â”€â”€ Main Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Main Content ---------------------------------------------------------
 
 st.title("\U0001f6e1\ufe0f Aegis Operational Intelligence")
 st.caption(
-    "Intelligence pipeline: Health \u2192 Anomaly \u2192 Diagnostic \u2192 Risk. "
-    "All values derived from existing services, not hardcoded thresholds."
+    "Intelligence from persisted evaluation snapshots. "
+    "Pipeline: Health \u2192 Anomaly \u2192 Diagnostic \u2192 Risk."
 )
 
 if not devices:
     st.info(
         "No registered devices found. To populate the dashboard:\n\n"
-        "1. Start infrastructure: `docker compose up -d`\n"
-        "2. Seed device registry: `python -m apps.backend.seed_devices`\n"
-        "3. Ingest telemetry: `python -m apps.ingestion` or run a simulator\n\n"
-        "The dashboard will display intelligence once telemetry data is available."
+        "1. Start infrastructure: docker compose up -d\n"
+        "2. Seed device registry: python -m apps.backend.seed_devices\n"
+        "3. Ingest telemetry: python -m apps.ingestion or run a simulator"
     )
     st.stop()
 
-# Compute intelligence for all registered devices
-with st.spinner("Computing fleet intelligence\u2026"):
-    intel_map = {
-        dev.device_id: _compute_asset_intelligence(dev.device_id, db_url) for dev in devices
-    }
+# -- Evaluate + Query Snapshots -------------------------------------------
 
-# â”€â”€ Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+device_ids = [dev.device_id for dev in devices]
+device_asset_map = {dev.device_id: dev.asset_id for dev in devices}
+
+with st.spinner("Loading fleet intelligence\u2026"):
+    # Query existing snapshots
+    snap_results = services["snapshot_qry"].get_fleet_snapshots(device_ids)
+
+    # Evaluate devices that have no snapshot or stale snapshot
+    devices_needing_eval = []
+    for did in device_ids:
+        qr = snap_results[did]
+        if not qr.has_data or qr.status in ("stale", "no_snapshot", "evaluation_failed"):
+            devices_needing_eval.append((did, device_asset_map[did]))
+
+    if devices_needing_eval:
+        eval_results = services["eval_svc"].evaluate_fleet(devices_needing_eval)
+        # Re-query to get the fresh snapshots
+        snap_results = services["snapshot_qry"].get_fleet_snapshots(device_ids)
+
+# Build intelligence map from snapshots
+intel_map = {}
+for did in device_ids:
+    qr = snap_results[did]
+    if qr.has_data and qr.snapshot:
+        snap = qr.snapshot
+        intel_map[did] = {
+            "health": snap.health,
+            "anomaly": snap.anomaly,
+            "diagnostic": snap.diagnostic,
+            "finding": snap.finding,
+            "errors": list(snap.errors),
+            "status": qr.status,
+            "freshness": qr.freshness,
+            "evaluated_at": snap.evaluated_at,
+        }
+    else:
+        intel_map[did] = {
+            "health": None,
+            "anomaly": None,
+            "diagnostic": None,
+            "finding": None,
+            "errors": [],
+            "status": qr.status,
+            "freshness": None,
+            "evaluated_at": None,
+        }
+
+# -- Tabs -----------------------------------------------------------------
 
 tab_overview, tab_detail, tab_telemetry = st.tabs(
     ["\U0001f4ca Fleet Overview", "\U0001f50d Asset Intelligence", "\U0001f4dc Telemetry History"],
 )
 
-# â”€â”€ Tab 1: Fleet Overview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Tab 1: Fleet Overview ------------------------------------------------
 
 with tab_overview:
     st.subheader("Fleet Condition Summary")
-
     counts = {"NORMAL": 0, "DEGRADING": 0, "CRITICAL": 0, "UNKNOWN": 0}
     for intel in intel_map.values():
         h = intel.get("health")
-        if h:
-            state = h.operational_state.value
-        else:
-            state = "UNKNOWN"
+        state = h.operational_state.value if h else "UNKNOWN"
         counts[state] = counts.get(state, 0) + 1
-
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("\U0001f7e2 Normal", counts["NORMAL"])
     c2.metric("\U0001f7e1 Degrading", counts["DEGRADING"])
     c3.metric("\U0001f534 Critical", counts["CRITICAL"])
     c4.metric("\u26aa Unknown", counts["UNKNOWN"])
-
     st.divider()
     st.subheader("Asset Intelligence Overview")
-
     rows = []
     for dev_id, intel in intel_map.items():
         h = intel.get("health")
@@ -266,34 +251,27 @@ with tab_overview:
         d = intel.get("diagnostic")
         f = intel.get("finding")
         errs = intel.get("errors", [])
-
+        snap_status = intel.get("status", "unknown")
         rows.append(
             {
                 "Device": dev_id,
-                "State": (
-                    f"{_state_icon(_safe_val(h, 'operational_state'))} "
-                    f"{_safe_val(h, 'operational_state')}"
-                ),
+                "Snapshot": _status_badge(snap_status),
+                "State": f"{_state_icon(_safe_val(h, 'operational_state'))} {_safe_val(h, 'operational_state')}",
                 "Health": _safe_val(h, "health_score", "{:.1f}/100"),
                 "Anomaly": _safe_val(a, "status"),
                 "Severity": _safe_val(a, "severity"),
                 "Diagnostic": _safe_val(d, "status"),
-                "Priority": (
-                    f"{_priority_icon(_safe_val(f, 'priority'))} {_safe_val(f, 'priority')}"
-                ),
+                "Priority": f"{_priority_icon(_safe_val(f, 'priority'))} {_safe_val(f, 'priority')}",
                 "Issues": "; ".join(errs) if errs else "\u2705",
-            },
+            }
         )
-
     st.dataframe(rows, use_container_width=True, hide_index=True)
 
-# â”€â”€ Tab 2: Asset Intelligence Detail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Tab 2: Asset Intelligence Detail -------------------------------------
 
 with tab_detail:
     st.subheader("Asset Intelligence Detail")
-    device_ids = [dev.device_id for dev in devices]
     selected = st.selectbox("Select Asset", device_ids)
-
     if selected and selected in intel_map:
         intel = intel_map[selected]
         h = intel.get("health")
@@ -301,11 +279,25 @@ with tab_detail:
         d = intel.get("diagnostic")
         f = intel.get("finding")
         errs = intel.get("errors", [])
+        snap_status = intel.get("status", "unknown")
+        freshness = intel.get("freshness")
+        eval_at = intel.get("evaluated_at")
+
+        # Status banner
+        badge = _status_badge(snap_status)
+        if snap_status == "current":
+            st.success(f"{badge} | {freshness.reason if freshness else ''}")
+        elif snap_status == "stale":
+            st.warning(f"{badge} | {freshness.reason if freshness else ''}")
+        elif snap_status in ("evaluation_failed", "query_error"):
+            st.error(f"{badge}")
+        else:
+            st.info(f"{badge}")
 
         if errs:
             st.warning(f"\u26a0\ufe0f Pipeline issues: {'; '.join(errs)}")
 
-        # â”€â”€ Health â”€â”€
+        # Health
         st.markdown("#### \U0001fa7a Health Assessment")
         if h:
             hc = st.columns(4)
@@ -315,7 +307,6 @@ with tab_detail:
             hc[2].metric("Confidence", f"{h.confidence:.0%}")
             hc[3].metric("Trend", h.trend.value)
             st.caption(f"Evaluated: {h.evaluated_at.isoformat()} | {h.evidence_summary}")
-
             if h.sensor_signals:
                 with st.expander("Sensor Signal Evidence"):
                     for sig in h.sensor_signals:
@@ -330,11 +321,10 @@ with tab_detail:
                             f"(n={sig.sample_count})"
                         )
         else:
-            st.info("Health assessment unavailable. Insufficient telemetry data.")
-
+            st.info("Health assessment unavailable.")
         st.divider()
 
-        # â”€â”€ Anomaly â”€â”€
+        # Anomaly
         st.markdown("#### \U0001f514 Anomaly & Degradation Detection")
         if a:
             ac = st.columns(4)
@@ -343,21 +333,19 @@ with tab_detail:
             ac[2].metric("Severity", a.severity.value)
             ac[3].metric("Confidence", f"{a.confidence:.0%}")
             st.caption(f"Method: {a.detection_method} | {a.evaluated_at.isoformat()}")
-
             if a.evidence_list:
                 with st.expander("Detection Evidence"):
                     for ev in a.evidence_list:
                         st.markdown(
                             f"- **{ev.sensor_id}**: {ev.deviation_sigma:.2f}\u03c3, "
-                            f"persistence={ev.persistence_count} cycles, "
+                            f"persistence={ev.persistence_count}, "
                             f"contribution={ev.contribution_score:.2f} \u2014 {ev.reason}"
                         )
         else:
             st.info("Anomaly detection unavailable.")
-
         st.divider()
 
-        # â”€â”€ Diagnostic â”€â”€
+        # Diagnostic
         st.markdown("#### \U0001f52c Diagnostic Hypotheses")
         if d:
             dc = st.columns(3)
@@ -366,9 +354,8 @@ with tab_detail:
             dc[2].metric("Confidence", f"{d.confidence:.0%}")
             st.markdown(f"**Primary Finding:** {d.primary_finding}")
             st.caption(f"Limitations: {d.limitations}")
-
             if d.hypotheses:
-                with st.expander("Hypotheses (advisory \u2014 not confirmed root causes)"):
+                with st.expander("Hypotheses (advisory)"):
                     for hyp in d.hypotheses:
                         st.markdown(
                             f"- **{hyp.category.value}** "
@@ -376,21 +363,15 @@ with tab_detail:
                             f"severity: {hyp.severity.value}): "
                             f"{hyp.description}"
                         )
-                        for se in hyp.supporting_evidence:
-                            st.caption(f"  \u21b3 {se}")
         else:
-            st.info("Diagnostic analysis unavailable. Requires health + anomaly results.")
-
+            st.info("Diagnostic analysis unavailable.")
         st.divider()
 
-        # â”€â”€ Risk â”€â”€
+        # Risk
         st.markdown("#### \u26a1 Operational Risk & Advisory")
         if f:
             fc = st.columns(3)
-            fc[0].metric(
-                "Priority",
-                f"{_priority_icon(f.priority.value)} {f.priority.value}",
-            )
+            fc[0].metric("Priority", f"{_priority_icon(f.priority.value)} {f.priority.value}")
             fc[1].metric("Risk Level", f.risk_level.value)
             fc[2].metric("Confidence", f"{f.confidence:.0%}")
             st.markdown(f"**Summary:** {f.summary}")
@@ -398,18 +379,18 @@ with tab_detail:
             if f.lead_cycles_estimate is not None:
                 st.caption(f"Lead cycles estimate: {f.lead_cycles_estimate}")
             st.caption(f"Limitations: {f.limitations}")
-
             if f.supporting_evidence:
                 with st.expander("Evidence Chain"):
                     for ev in f.supporting_evidence:
                         st.markdown(f"- {ev}")
         else:
-            st.info("Risk assessment unavailable. Requires complete pipeline.")
+            st.info("Risk assessment unavailable.")
 
-# â”€â”€ Tab 3: Telemetry History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Tab 3: Telemetry History (unchanged from P4.S1) ----------------------
 
 with tab_telemetry:
     st.subheader("Telemetry History")
+    qs = services.get("query_svc") if services else None
     if qs:
         sel_dev = st.selectbox("Device", device_ids, key="telem_dev")
         if sel_dev:
@@ -453,7 +434,7 @@ with tab_telemetry:
     else:
         st.info("Database connection required for telemetry history.")
 
-# â”€â”€ Auto-refresh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Auto-refresh ---------------------------------------------------------
 
 if auto_refresh:
     import time
