@@ -77,6 +77,7 @@ def test_fr_s6_01_unified_producer_flow():
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id="test-s6-publisher"
     )
     pub.connect(MQTT_HOST, MQTT_PORT, 60)
+    pub.loop_start()
 
     # 1. Digital Twin Simulator emission (with humidity enabled)
     sim_config = SimulationConfig(
@@ -110,6 +111,8 @@ def test_fr_s6_01_unified_producer_flow():
     )
     pub.publish("aegis/telemetry/device-esp32-01", json.dumps(esp_env.to_dict()))
 
+    time.sleep(0.5)
+    pub.loop_stop()
     pub.disconnect()
     time.sleep(1.0)
     consumer.stop()
