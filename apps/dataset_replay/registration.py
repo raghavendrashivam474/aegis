@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
+
+import psycopg
+from psycopg.rows import dict_row
 
 # Fix python import path to see packages/
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,15 +17,11 @@ if str(ROOT / "packages") not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from domain.entities import Device, EntityStatus, Sensor
-
-from apps.backend.postgres_adapter import PostgresDeviceRegistry
 from apps.dataset_replay.config import DatasetReplayConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("aegis.dataset_replay.registration")
 
-# Define the formal C-MAPSS 21-sensor catalog
 MAPSS_SENSORS = [
     ("sensor-t2-inlet", "T2 Inlet Temperature", "temperature", "K"),
     ("sensor-t24-lpc", "T24 LPC Outlet Temperature", "temperature", "K"),
@@ -50,7 +51,6 @@ def discover_unique_units(filepath: Path) -> list[int]:
     """Scan file and return sorted unique unit IDs."""
     if not filepath.exists():
         raise FileNotFoundError(f"Dataset file not found at {filepath}")
-
     units = set()
     with open(filepath, encoding="utf-8") as f:
         for line in f:
@@ -63,73 +63,81 @@ def discover_unique_units(filepath: Path) -> list[int]:
     return sorted(list(units))
 
 
-def register_dataset_assets(database_url: str | None = None) -> int:
-    """Connect to database and register all discovered engines."""
+def register_dataset_assets(database_url: str | None = None, pool: Any = None) -> int:
+    """Connect to database and register all discovered engines in a single batch."""
     config = DatasetReplayConfig()
     db_url = database_url or os.getenv(
         "AEGIS_DATABASE_URL", "postgresql://aegis_admin:aegis_password@localhost:5434/aegis_db"
     )
 
-    logger.info("Discovering devices from dataset: %s", config.dataset_file_path)
     try:
         units = discover_unique_units(config.dataset_file_path)
         logger.info("Discovered %d distinct turbofan engines: %s", len(units), units)
-    except Exception as err:
-        logger.error("Failed to discover unique units: %s", err)
-        return 1
 
-    logger.info("Initializing Postgres Device Registry...")
-    registry = PostgresDeviceRegistry(db_url)
+        with psycopg.connect(db_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                # Check if engine-001 already exists
+                cur.execute("SELECT device_id FROM aegis_devices WHERE device_id = 'engine-001';")
+                if cur.fetchone():
+                    logger.info("Engine devices already registered. Skipping.")
+                    return 0
 
-    try:
-        registered_count = 0
-        for unit in units:
-            device_id = f"engine-{unit:03d}"
-
-            # Construct nested sensors for this engine
-            sensors_to_register = []
-            for item in MAPSS_SENSORS:
-                s_id, s_name, s_type, s_unit = item
-                sensor_id = f"{s_id}-{device_id}"  # Enforce fully-qualified scoped sensor names
-                sensors_to_register.append(
-                    Sensor(
-                        sensor_id=sensor_id,
-                        name=f"Engine {unit:03d} {s_name}",
-                        measurement_type=s_type,
-                        unit=s_unit,
-                        device_id=device_id,
-                        status=EntityStatus.ACTIVE,
-                        metadata={"source": "cmapss_fd001_historical"},
+                # 1. Insert devices
+                device_rows = [
+                    (
+                        f"engine-{unit:03d}",
+                        f"Turbofan Engine Model {unit:03d}",
+                        config.asset_id,
+                        "ACTIVE",
+                        json.dumps({"dataset_class": "NASA_CMAPSS_FD001"}),
                     )
+                    for unit in units
+                ]
+                cur.executemany(
+                    """
+                    INSERT INTO aegis_devices (device_id, name, asset_id, status, metadata)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (device_id) DO NOTHING;
+                    """,
+                    device_rows,
                 )
 
-            device = Device(
-                device_id=device_id,
-                name=f"Turbofan Engine Model {unit:03d}",
-                asset_id=config.asset_id,
-                sensors=sensors_to_register,
-                status=EntityStatus.ACTIVE,
-                metadata={"dataset_class": "NASA_CMAPSS_FD001"},
-            )
-
-            # Upsert into PostgreSQL Device Registry
-            registry.register_device(device)
-            registered_count += 1
-            logger.info(
-                "Successfully registered device '%s' with %d associated sensors.",
-                device_id,
-                len(sensors_to_register),
-            )
+                # 2. Insert sensors
+                sensor_rows = []
+                for unit in units:
+                    dev_id = f"engine-{unit:03d}"
+                    for s_id, s_name, s_type, s_unit in MAPSS_SENSORS:
+                        sensor_rows.append(
+                            (
+                                f"{s_id}-{dev_id}",
+                                f"Engine {unit:03d} {s_name}",
+                                s_type,
+                                s_unit,
+                                dev_id,
+                                "ACTIVE",
+                                json.dumps({"source": "cmapss_fd001_historical"}),
+                            )
+                        )
+                cur.executemany(
+                    """
+                    INSERT INTO aegis_sensors
+                    (sensor_id, name, measurement_type, unit, device_id, status, metadata)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (sensor_id) DO NOTHING;
+                    """,
+                    sensor_rows,
+                )
+            conn.commit()
 
         logger.info(
-            "Registration sequence complete. Total devices registered: %d", registered_count
+            "Batch registered %d devices and %d sensors.",
+            len(device_rows),
+            len(sensor_rows),
         )
         return 0
     except Exception as err:
-        logger.error("Error during system registration: %s", err)
+        logger.error("Error during batch registration: %s", err)
         return 2
-    finally:
-        registry.close()
 
 
 if __name__ == "__main__":
