@@ -1,4 +1,4 @@
-﻿"""
+"""
 Aegis P2.S4 Verification Test Suite.
 Tests deterministic operational risk prioritization and explainable findings:
 - S4-NOMINAL: Healthy stable asset
@@ -10,27 +10,26 @@ Tests deterministic operational risk prioritization and explainable findings:
 - S4-DETERMINISM: Idempotent results and identical traceability chains
 - S4-END-TO-END: Real NASA C-MAPSS FD001 full intelligence pipeline traceability
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from apps.dataset_replay.adapter import CmapssAdapter
 from contracts.mappers import ObservationMapper
 from domain.entities import Observation, QualityFlag
 from domain.intelligence import (
     AnomalySeverity,
-    AnomalyStatus,
-    DiagnosticStatus,
     OperationalPriority,
-    OperationalState,
 )
 from domain.repository import InMemoryTelemetryRepository
 from intelligence.anomaly_service import AnomalyDetectionService
 from intelligence.diagnostic_service import DiagnosticService
 from intelligence.health_service import HealthAssessmentService
 from intelligence.risk_service import OperationalRiskService
+
+from apps.dataset_replay.adapter import CmapssAdapter
 
 
 def _make_observation(
@@ -67,7 +66,9 @@ def test_scenario_s4_nominal() -> None:
     for cycle in range(1, 60):
         ts = base_time + timedelta(minutes=cycle)
         for s_id in sensors:
-            repo.save_observation(_make_observation(device_id, s_id, ts, nominal_vals[s_id], cycle=cycle))
+            repo.save_observation(
+                _make_observation(device_id, s_id, ts, nominal_vals[s_id], cycle=cycle)
+            )
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-pump")
     anomaly = AnomalyDetectionService(repo).detect(device_id, "asset-pump")
@@ -97,7 +98,9 @@ def test_scenario_s4_early_drift() -> None:
     for cycle in range(51, 61):
         ts = base_time + timedelta(minutes=cycle)
         drift = (cycle - 50) * 0.3
-        repo.save_observation(_make_observation(device_id, "temp-b2", ts, 50.0 + drift, cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "temp-b2", ts, 50.0 + drift, cycle=cycle)
+        )
         repo.save_observation(_make_observation(device_id, "vib-b2", ts, 2.0, cycle=cycle))
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-blower")
@@ -107,7 +110,11 @@ def test_scenario_s4_early_drift() -> None:
 
     # Should flag LOW or MEDIUM priority without jumping prematurely to CRITICAL
     assert finding.priority in (OperationalPriority.LOW, OperationalPriority.MEDIUM)
-    assert "observation" in finding.recommended_next_action.lower() or "monitor" in finding.recommended_next_action.lower() or "review" in finding.recommended_next_action.lower()
+    assert (
+        "observation" in finding.recommended_next_action.lower()
+        or "monitor" in finding.recommended_next_action.lower()
+        or "review" in finding.recommended_next_action.lower()
+    )
 
 
 # =========================================================================
@@ -127,9 +134,15 @@ def test_scenario_s4_high_risk() -> None:
     for cycle in range(51, 86):
         ts = base_time + timedelta(minutes=cycle)
         drift = cycle - 50
-        repo.save_observation(_make_observation(device_id, "temp-h3", ts, 60.0 + (drift * 1.5), cycle=cycle))
-        repo.save_observation(_make_observation(device_id, "vib-h3", ts, 1.5 + (drift * 0.2), cycle=cycle))
-        repo.save_observation(_make_observation(device_id, "press-h3", ts, 150.0 - (drift * 1.5), cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "temp-h3", ts, 60.0 + (drift * 1.5), cycle=cycle)
+        )
+        repo.save_observation(
+            _make_observation(device_id, "vib-h3", ts, 1.5 + (drift * 0.2), cycle=cycle)
+        )
+        repo.save_observation(
+            _make_observation(device_id, "press-h3", ts, 150.0 - (drift * 1.5), cycle=cycle)
+        )
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-hydraulic")
     anomaly = AnomalyDetectionService(repo).detect(device_id, "asset-hydraulic")
@@ -138,7 +151,11 @@ def test_scenario_s4_high_risk() -> None:
 
     assert finding.priority in (OperationalPriority.HIGH, OperationalPriority.CRITICAL)
     assert finding.risk_level in (AnomalySeverity.HIGH, AnomalySeverity.CRITICAL)
-    assert "maintenance" in finding.recommended_next_action.lower() or "inspection" in finding.recommended_next_action.lower() or "overhaul" in finding.recommended_next_action.lower()
+    assert (
+        "maintenance" in finding.recommended_next_action.lower()
+        or "inspection" in finding.recommended_next_action.lower()
+        or "overhaul" in finding.recommended_next_action.lower()
+    )
     assert len(finding.traceability_chain["signal_evidence_residuals"]) >= 2
 
 
@@ -179,7 +196,9 @@ def test_scenario_s4_low_confidence() -> None:
 
     # Only 3 observations
     for i in range(1, 4):
-        repo.save_observation(_make_observation(device_id, "temp-s5", base_time + timedelta(minutes=i), 50.0, cycle=i))
+        repo.save_observation(
+            _make_observation(device_id, "temp-s5", base_time + timedelta(minutes=i), 50.0, cycle=i)
+        )
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-sparse")
     anomaly = AnomalyDetectionService(repo).detect(device_id, "asset-sparse")
@@ -188,7 +207,10 @@ def test_scenario_s4_low_confidence() -> None:
 
     # Should not produce critical alarm when telemetry is missing
     assert finding.priority == OperationalPriority.LOW
-    assert "quality" in finding.recommended_next_action.lower() or "connectivity" in finding.recommended_next_action.lower()
+    assert (
+        "quality" in finding.recommended_next_action.lower()
+        or "connectivity" in finding.recommended_next_action.lower()
+    )
 
 
 # =========================================================================
@@ -234,8 +256,12 @@ def test_scenario_s4_determinism() -> None:
 
     for cycle in range(1, 60):
         ts = base_time + timedelta(minutes=cycle)
-        repo.save_observation(_make_observation(device_id, "temp-r7", ts, 50.0 + cycle * 0.1, cycle=cycle))
-        repo.save_observation(_make_observation(device_id, "vib-r7", ts, 2.0 + cycle * 0.02, cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "temp-r7", ts, 50.0 + cycle * 0.1, cycle=cycle)
+        )
+        repo.save_observation(
+            _make_observation(device_id, "vib-r7", ts, 2.0 + cycle * 0.02, cycle=cycle)
+        )
 
     health = HealthAssessmentService(repo).assess(device_id, "asset-repeater")
     anomaly = AnomalyDetectionService(repo).detect(device_id, "asset-repeater")
@@ -291,7 +317,11 @@ def test_scenario_s4_end_to_end_cmapss() -> None:
     assert f_late.priority in (OperationalPriority.HIGH, OperationalPriority.CRITICAL)
     assert f_late.risk_level in (AnomalySeverity.HIGH, AnomalySeverity.CRITICAL)
     assert f_late.primary_hypothesis is not None
-    assert "maintenance" in f_late.recommended_next_action.lower() or "overhaul" in f_late.recommended_next_action.lower() or "inspection" in f_late.recommended_next_action.lower()
+    assert (
+        "maintenance" in f_late.recommended_next_action.lower()
+        or "overhaul" in f_late.recommended_next_action.lower()
+        or "inspection" in f_late.recommended_next_action.lower()
+    )
 
     # Complete backwards traceability verification
     chain = f_late.traceability_chain

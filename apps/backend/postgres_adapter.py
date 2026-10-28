@@ -23,6 +23,7 @@ from domain import (
     DeviceRegistry,
     EntityNotFoundError,
     EntityStatus,
+    IntelligenceSnapshot,
     Observation,
     QualityFlag,
     Sensor,
@@ -407,6 +408,196 @@ class PostgresTelemetryRepository(TelemetryRepository):
                     quality=QualityFlag(row["quality"]),
                     metadata=row["metadata"] if isinstance(row["metadata"], dict) else {},
                 )
+
+    def close(self) -> None:
+        if self._owns_pool:
+            self._pool.close()
+
+
+class PostgresSnapshotRepository:
+    """
+    PostgreSQL-backed Intelligence Snapshot Repository (P4.S2).
+    Persists and queries intelligence evaluation snapshots using
+    JSONB columns for nested intelligence results.
+    """
+
+    def __init__(
+        self,
+        database_url: str | None = None,
+        pool: PostgresConnectionPool | None = None,
+    ) -> None:
+        if pool is not None:
+            self._pool = pool
+            self.database_url = pool.database_url
+            self._owns_pool = False
+        elif database_url is not None:
+            self.database_url = database_url
+            self._pool = PostgresConnectionPool(database_url)
+            self._owns_pool = True
+        else:
+            raise ValueError("Either database_url or pool must be provided.")
+
+    @contextmanager
+    def _get_conn(self) -> Iterator[psycopg.Connection]:
+        with self._pool.connection() as conn:
+            yield conn
+
+    def save(self, snapshot: IntelligenceSnapshot) -> None:
+        """Persist an intelligence snapshot to PostgreSQL."""
+        data = snapshot.to_dict()
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO aegis_intelligence_snapshots (
+                        snapshot_id, device_id, asset_id, evaluated_at,
+                        evaluation_status, operational_state, health_score,
+                        health, anomaly, diagnostic, finding,
+                        telemetry_start, telemetry_end,
+                        evaluation_duration_ms, contract_version,
+                        errors, metadata
+                    ) VALUES (
+                        %s, %s, %s, %s,
+                        %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s,
+                        %s, %s,
+                        %s, %s
+                    )
+                    ON CONFLICT (snapshot_id) DO NOTHING;
+                    """,
+                    (
+                        data["snapshot_id"],
+                        data["device_id"],
+                        data["asset_id"],
+                        data["evaluated_at"],
+                        data["evaluation_status"],
+                        snapshot.operational_state.value,
+                        snapshot.health.health_score if snapshot.health else None,
+                        json.dumps(data.get("health")),
+                        json.dumps(data.get("anomaly")),
+                        json.dumps(data.get("diagnostic")),
+                        json.dumps(data.get("finding")),
+                        data.get("telemetry_start"),
+                        data.get("telemetry_end"),
+                        data.get("evaluation_duration_ms"),
+                        data.get("contract_version", "v1"),
+                        json.dumps(data.get("errors", [])),
+                        json.dumps(data.get("metadata", {})),
+                    ),
+                )
+            conn.commit()
+
+    def get_latest(self, device_id: str) -> IntelligenceSnapshot | None:
+        """Retrieve the most recent snapshot for a device."""
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT snapshot_id, device_id, asset_id, evaluated_at,
+                           evaluation_status, health, anomaly, diagnostic,
+                           finding, telemetry_start, telemetry_end,
+                           evaluation_duration_ms, contract_version,
+                           errors, metadata
+                    FROM aegis_intelligence_snapshots
+                    WHERE device_id = %s
+                    ORDER BY evaluated_at DESC
+                    LIMIT 1;
+                    """,
+                    (device_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return self._row_to_snapshot(row)
+
+    def get_latest_for_fleet(self, device_ids: list[str]) -> dict[str, IntelligenceSnapshot]:
+        """Retrieve the latest snapshot per device using a lateral join."""
+        if not device_ids:
+            return {}
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                # Use DISTINCT ON for efficient latest-per-device query
+                cur.execute(
+                    """
+                    SELECT DISTINCT ON (device_id)
+                           snapshot_id, device_id, asset_id, evaluated_at,
+                           evaluation_status, health, anomaly, diagnostic,
+                           finding, telemetry_start, telemetry_end,
+                           evaluation_duration_ms, contract_version,
+                           errors, metadata
+                    FROM aegis_intelligence_snapshots
+                    WHERE device_id = ANY(%s)
+                    ORDER BY device_id, evaluated_at DESC;
+                    """,
+                    (device_ids,),
+                )
+                rows = cur.fetchall()
+                return {row["device_id"]: self._row_to_snapshot(row) for row in rows}
+
+    def get_history(self, device_id: str, limit: int = 50) -> list[IntelligenceSnapshot]:
+        """Retrieve historical snapshots for a device, newest first."""
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT snapshot_id, device_id, asset_id, evaluated_at,
+                           evaluation_status, health, anomaly, diagnostic,
+                           finding, telemetry_start, telemetry_end,
+                           evaluation_duration_ms, contract_version,
+                           errors, metadata
+                    FROM aegis_intelligence_snapshots
+                    WHERE device_id = %s
+                    ORDER BY evaluated_at DESC
+                    LIMIT %s;
+                    """,
+                    (device_id, limit),
+                )
+                rows = cur.fetchall()
+                return [self._row_to_snapshot(r) for r in rows]
+
+    def get_by_id(self, snapshot_id: str) -> IntelligenceSnapshot | None:
+        """Retrieve a specific snapshot by ID."""
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT snapshot_id, device_id, asset_id, evaluated_at,
+                           evaluation_status, health, anomaly, diagnostic,
+                           finding, telemetry_start, telemetry_end,
+                           evaluation_duration_ms, contract_version,
+                           errors, metadata
+                    FROM aegis_intelligence_snapshots
+                    WHERE snapshot_id = %s;
+                    """,
+                    (snapshot_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return self._row_to_snapshot(row)
+
+    @staticmethod
+    def _row_to_snapshot(row: dict) -> IntelligenceSnapshot:
+        """Convert a database row dict into an IntelligenceSnapshot."""
+        data = {
+            "snapshot_id": row["snapshot_id"],
+            "device_id": row["device_id"],
+            "asset_id": row["asset_id"],
+            "evaluated_at": row["evaluated_at"],
+            "evaluation_status": row["evaluation_status"],
+            "health": row["health"],
+            "anomaly": row["anomaly"],
+            "diagnostic": row["diagnostic"],
+            "finding": row["finding"],
+            "telemetry_start": row["telemetry_start"],
+            "telemetry_end": row["telemetry_end"],
+            "evaluation_duration_ms": row["evaluation_duration_ms"],
+            "contract_version": row["contract_version"],
+            "errors": row["errors"] if isinstance(row["errors"], list) else [],
+            "metadata": row["metadata"] if isinstance(row["metadata"], dict) else {},
+        }
+        return IntelligenceSnapshot.from_dict(data)
 
     def close(self) -> None:
         if self._owns_pool:

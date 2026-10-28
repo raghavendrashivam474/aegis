@@ -1,4 +1,5 @@
-﻿"""Architecture integrity test: enforces domain and intelligence layer purity."""
+"""Architecture integrity test: enforces domain and intelligence layer purity."""
+
 import ast
 from pathlib import Path
 

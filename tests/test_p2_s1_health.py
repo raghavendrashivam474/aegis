@@ -1,4 +1,4 @@
-﻿"""
+"""
 Aegis P2.S1 Verification Test Suite.
 Tests operational state and asset health assessment across all defined scenarios:
 - S1-NORMAL: Healthy, stable operating baseline
@@ -9,16 +9,15 @@ Tests operational state and asset health assessment across all defined scenarios
 - S1-DETERMINISM: Repeatable assessments
 - S1-CMAPSS-REAL: Real C-MAPSS dataset engine lifecycle evaluation
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from apps.dataset_replay.adapter import CmapssAdapter
 from domain.entities import Observation, QualityFlag
 from domain.intelligence import (
-    HealthAssessment,
     OperationalState,
     TrendDirection,
 )
@@ -31,6 +30,8 @@ from intelligence.statistics import (
     compute_std,
     compute_trend,
 )
+
+from apps.dataset_replay.adapter import CmapssAdapter
 
 
 def _make_observation(
@@ -57,6 +58,7 @@ def _make_observation(
 # =========================================================================
 # Unit Tests: Statistical Foundation
 # =========================================================================
+
 
 def test_pure_statistics_mean_and_std() -> None:
     values = [10.0, 10.0, 10.0, 10.0]
@@ -106,6 +108,7 @@ def test_pure_statistics_deviation_and_health_mapping() -> None:
 # Scenario 1: S1-NORMAL (Stable / Healthy Asset)
 # =========================================================================
 
+
 def test_scenario_s1_normal() -> None:
     repo = InMemoryTelemetryRepository()
     base_time = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
@@ -134,6 +137,7 @@ def test_scenario_s1_normal() -> None:
 # =========================================================================
 # Scenario 2: S1-DEGRADING (Progressively Deteriorating Telemetry)
 # =========================================================================
+
 
 def test_scenario_s1_degrading() -> None:
     repo = InMemoryTelemetryRepository()
@@ -166,6 +170,7 @@ def test_scenario_s1_degrading() -> None:
 # Scenario 3: S1-INSUFFICIENT-DATA (Sparse Observations)
 # =========================================================================
 
+
 def test_scenario_s1_insufficient_data() -> None:
     repo = InMemoryTelemetryRepository()
     base_time = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
@@ -189,6 +194,7 @@ def test_scenario_s1_insufficient_data() -> None:
 # Scenario 4: S1-BAD-DATA (Filtering and Confidence Penalty)
 # =========================================================================
 
+
 def test_scenario_s1_bad_data_handling() -> None:
     repo = InMemoryTelemetryRepository()
     base_time = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
@@ -200,7 +206,9 @@ def test_scenario_s1_bad_data_handling() -> None:
         ts = base_time + timedelta(minutes=i)
         quality = QualityFlag.BAD if i > 5 else QualityFlag.GOOD
         val = 9999.0 if quality == QualityFlag.BAD else 2.5
-        repo.save_observation(_make_observation(device_id, sensor_id, ts, val, quality=quality, cycle=i))
+        repo.save_observation(
+            _make_observation(device_id, sensor_id, ts, val, quality=quality, cycle=i)
+        )
 
     service = HealthAssessmentService(repo)
     assessment = service.assess(device_id=device_id, asset_id="asset-unit-4")
@@ -214,6 +222,7 @@ def test_scenario_s1_bad_data_handling() -> None:
 # =========================================================================
 # Scenario 5: S1-RECOVERY (Return towards Healthy Baseline)
 # =========================================================================
+
 
 def test_scenario_s1_recovery() -> None:
     repo = InMemoryTelemetryRepository()
@@ -249,6 +258,7 @@ def test_scenario_s1_recovery() -> None:
 # Scenario 6: S1-DETERMINISM (Idempotent Results)
 # =========================================================================
 
+
 def test_scenario_s1_determinism() -> None:
     repo = InMemoryTelemetryRepository()
     base_time = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
@@ -256,7 +266,9 @@ def test_scenario_s1_determinism() -> None:
 
     for cycle in range(1, 60):
         ts = base_time + timedelta(minutes=cycle)
-        repo.save_observation(_make_observation(device_id, "rpm-t6", ts, 3000.0 + (cycle * 0.2), cycle=cycle))
+        repo.save_observation(
+            _make_observation(device_id, "rpm-t6", ts, 3000.0 + (cycle * 0.2), cycle=cycle)
+        )
 
     service = HealthAssessmentService(repo)
     res1 = service.assess(device_id=device_id, asset_id="asset-turbine")
@@ -272,6 +284,7 @@ def test_scenario_s1_determinism() -> None:
 # =========================================================================
 # Scenario 7: Real NASA C-MAPSS FD001 Lifecycle Evaluation
 # =========================================================================
+
 
 def test_scenario_s1_cmapss_real_data_evaluation() -> None:
     """Evaluate HealthAssessmentService against real NASA C-MAPSS engine-001 lifecycle."""
@@ -312,4 +325,7 @@ def test_scenario_s1_cmapss_real_data_evaluation() -> None:
 
     # 2. Late stage near failure shows distinct degradation
     assert assessment_late.health_score < assessment_early.health_score
-    assert assessment_late.operational_state in (OperationalState.DEGRADING, OperationalState.CRITICAL)
+    assert assessment_late.operational_state in (
+        OperationalState.DEGRADING,
+        OperationalState.CRITICAL,
+    )

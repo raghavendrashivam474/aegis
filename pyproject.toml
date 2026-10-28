@@ -46,3 +46,29 @@ addopts = "-ra -q"
 markers = [
     "integration: marks tests requiring live Docker infrastructure (PostgreSQL, MQTT)",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Scripts use sys.path manipulation before imports (E402) and contain
+# long demonstration output strings (E501). These are standalone demo
+# scripts, not production modules.
+"scripts/**" = ["E402", "E501", "C901"]
+
+# Dataset replay modules use sys.path setup for standalone execution (E402).
+"apps/dataset_replay/registration.py" = ["E402"]
+"apps/dataset_replay/replay.py" = ["E402"]
+"apps/dashboard/app.py" = ["E402", "E501"]
+
+# Test files contain long assertion lines and setup calls that reduce
+# readability when broken across lines (E501).
+"tests/**" = ["E501"]
+
+# Intelligence services contain long domain-description strings and
+# f-strings that lose clarity when broken. Complexity (C901) reflects
+# the inherent decision-tree nature of diagnostic and risk logic.
+"packages/intelligence/risk_service.py" = ["E501", "C901"]
+"packages/intelligence/diagnostic_service.py" = ["E501"]
+"packages/intelligence/anomaly_service.py" = ["E501", "C901"]
+
+# Evaluation harness contains complex benchmark orchestration methods
+# that are out of scope for P4.S1 refactoring.
+"packages/evaluation/performance_harness.py" = ["C901"]

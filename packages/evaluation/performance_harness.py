@@ -1,5 +1,5 @@
 """
-P3.S3 — Performance & Reliability Evaluation Harness
+P3.S3 Ã¢â‚¬â€ Performance & Reliability Evaluation Harness
 
 Evaluates the existing Aegis intelligence pipeline without modifying it.
 Measures latency, throughput, determinism, reliability, and resource behavior.
@@ -14,32 +14,30 @@ Usage:
     results = harness.run_all(tier="small")
 """
 
-import time
+import hashlib
 import json
-import sys
 import os
 import platform
-import hashlib
-import traceback
+import time
 import tracemalloc
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Optional, Any, Tuple
-from datetime import datetime, timezone
-from pathlib import Path
-from statistics import median, mean, stdev
-
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from statistics import mean, median, stdev
+from typing import Any
 
 # ================================================================
 # Data structures
 # ================================================================
 
+
 @dataclass
 class TimingResult:
     """Single timing measurement."""
+
     service: str
     runs: int
     warmup: int
-    times_ms: List[float]
+    times_ms: list[float]
     median_ms: float
     mean_ms: float
     min_ms: float
@@ -60,6 +58,7 @@ class TimingResult:
 @dataclass
 class ThroughputResult:
     """Throughput measurement."""
+
     tier: str
     total_cases: int
     completed_cases: int
@@ -72,27 +71,30 @@ class ThroughputResult:
 @dataclass
 class DeterminismResult:
     """Determinism check result."""
+
     runs: int
     cases_checked: int
     consistent_cases: int
     inconsistent_cases: int
-    inconsistent_fields: List[str]
+    inconsistent_fields: list[str]
     verdict: str  # "DETERMINISTIC", "STOCHASTIC_FIELDS", "NON_DETERMINISTIC"
 
 
 @dataclass
 class ReliabilityResult:
     """Pipeline reliability result."""
+
     total_cases: int
     successful: int
     failed_with_error: int
     silent_losses: int
-    error_details: List[Dict[str, str]]
+    error_details: list[dict[str, str]]
 
 
 @dataclass
 class ResourceSnapshot:
     """Memory/resource observation."""
+
     phase: str  # "before", "during", "after"
     current_mb: float
     peak_mb: float
@@ -102,33 +104,35 @@ class ResourceSnapshot:
 @dataclass
 class BenchmarkReport:
     """Complete benchmark report."""
+
     timestamp: str
     machine: str
     python_version: str
     git_commit: str
     dataset: str
     tier: str
-    discovery: Dict[str, bool]
-    latency: Dict[str, dict]
-    throughput: Optional[dict]
-    determinism: Optional[dict]
-    reliability: Optional[dict]
-    resources: List[dict]
-    errors: List[str]
-    limitations: List[str]
+    discovery: dict[str, bool]
+    latency: dict[str, dict]
+    throughput: dict | None
+    determinism: dict | None
+    reliability: dict | None
+    resources: list[dict]
+    errors: list[str]
+    limitations: list[str]
 
 
 # ================================================================
 # Service discovery
 # ================================================================
 
+
 class ServiceDiscovery:
     """Discovers available Aegis intelligence services."""
 
     def __init__(self):
-        self.services: Dict[str, Any] = {}
-        self.modules: Dict[str, Any] = {}
-        self.available: Dict[str, bool] = {
+        self.services: dict[str, Any] = {}
+        self.modules: dict[str, Any] = {}
+        self.available: dict[str, bool] = {
             "domain_intelligence": False,
             "health_service": False,
             "anomaly_service": False,
@@ -138,7 +142,7 @@ class ServiceDiscovery:
             "dataset_replay": False,
             "query_service": False,
         }
-        self.import_errors: List[str] = []
+        self.import_errors: list[str] = []
 
     def discover(self):
         """Attempt to import all known Aegis services."""
@@ -188,9 +192,7 @@ class ServiceDiscovery:
                     self.available[name] = True
 
                     # Try to instantiate the primary service class
-                    class_name = "".join(
-                        w.capitalize() for w in name.split("_")
-                    )
+                    class_name = "".join(w.capitalize() for w in name.split("_"))
                     if hasattr(mod, class_name):
                         try:
                             self.services[name] = getattr(mod, class_name)()
@@ -246,14 +248,15 @@ class ServiceDiscovery:
 # Workload loader
 # ================================================================
 
+
 class WorkloadLoader:
     """Loads C-MAPSS evaluation workloads."""
 
     def __init__(self, discovery: ServiceDiscovery):
         self.discovery = discovery
-        self._data_cache: Dict[str, Any] = {}
+        self._data_cache: dict[str, Any] = {}
 
-    def load(self, tier: str = "small") -> List[Dict[str, Any]]:
+    def load(self, tier: str = "small") -> list[dict[str, Any]]:
         """
         Load workload cases for the specified tier.
 
@@ -279,7 +282,7 @@ class WorkloadLoader:
                 if cases:
                     self._data_cache[tier] = cases
                     return cases
-            except Exception as e:
+            except Exception:
                 pass  # Fall through to synthetic
 
         # Attempt 2: Load raw C-MAPSS files directly
@@ -296,7 +299,7 @@ class WorkloadLoader:
         self._data_cache[tier] = cases
         return cases
 
-    def _load_from_replay(self, tier: str) -> List[Dict[str, Any]]:
+    def _load_from_replay(self, tier: str) -> list[dict[str, Any]]:
         """Load via existing replay infrastructure."""
         mod = self.discovery.modules.get("dataset_replay")
         if not mod:
@@ -313,7 +316,7 @@ class WorkloadLoader:
                     continue
         return []
 
-    def _load_from_files(self, tier: str) -> List[Dict[str, Any]]:
+    def _load_from_files(self, tier: str) -> list[dict[str, Any]]:
         """Load raw C-MAPSS data files."""
         data_dirs = [
             "data/cmapss",
@@ -327,21 +330,17 @@ class WorkloadLoader:
                 continue
             for fname in os.listdir(d):
                 if fname.endswith((".txt", ".csv")) and "train" in fname.lower():
-                    return self._parse_cmapss_file(
-                        os.path.join(d, fname), tier
-                    )
+                    return self._parse_cmapss_file(os.path.join(d, fname), tier)
         return []
 
-    def _parse_cmapss_file(
-        self, filepath: str, tier: str
-    ) -> List[Dict[str, Any]]:
+    def _parse_cmapss_file(self, filepath: str, tier: str) -> list[dict[str, Any]]:
         """Parse a C-MAPSS data file into case dicts."""
         cases = []
         tier_limits = {"small": 50, "representative": 500, "stress": 2000}
         limit = tier_limits.get(tier, 50)
 
         try:
-            with open(filepath, "r") as f:
+            with open(filepath) as f:
                 for i, line in enumerate(f):
                     if i >= limit:
                         break
@@ -354,22 +353,21 @@ class WorkloadLoader:
                             "s2": float(parts[3]),
                             "s3": float(parts[4]),
                         }
-                        sensors = {
-                            f"sensor_{j}": float(parts[5 + j])
-                            for j in range(21)
-                        }
-                        cases.append({
-                            "engine_id": f"engine_{engine_id}",
-                            "cycle": cycle,
-                            "sensors": sensors,
-                            "settings": settings,
-                            "source": os.path.basename(filepath),
-                        })
+                        sensors = {f"sensor_{j}": float(parts[5 + j]) for j in range(21)}
+                        cases.append(
+                            {
+                                "engine_id": f"engine_{engine_id}",
+                                "cycle": cycle,
+                                "sensors": sensors,
+                                "settings": settings,
+                                "source": os.path.basename(filepath),
+                            }
+                        )
         except Exception:
             pass
         return cases
 
-    def _generate_synthetic(self, tier: str) -> List[Dict[str, Any]]:
+    def _generate_synthetic(self, tier: str) -> list[dict[str, Any]]:
         """Generate deterministic synthetic cases for benchmarking."""
         import math
 
@@ -382,29 +380,26 @@ class WorkloadLoader:
             cycle = i * 10
             # Deterministic pseudo-sensor values
             sensors = {
-                f"sensor_{j}": round(
-                    math.sin(i * 0.1 + j * 0.3) * 100 + 500, 4
-                )
-                for j in range(21)
+                f"sensor_{j}": round(math.sin(i * 0.1 + j * 0.3) * 100 + 500, 4) for j in range(21)
             }
             settings = {
                 "s1": round(math.cos(i * 0.2) * 10, 4),
                 "s2": 0.0,
                 "s3": round(math.sin(i * 0.15) * 50 + 100, 4),
             }
-            cases.append({
-                "engine_id": engine_id,
-                "cycle": cycle,
-                "sensors": sensors,
-                "settings": settings,
-                "source": f"synthetic_{tier}",
-            })
+            cases.append(
+                {
+                    "engine_id": engine_id,
+                    "cycle": cycle,
+                    "sensors": sensors,
+                    "settings": settings,
+                    "source": f"synthetic_{tier}",
+                }
+            )
 
         return cases
 
-    def _normalize_replay_output(
-        self, data: Any, tier: str
-    ) -> List[Dict[str, Any]]:
+    def _normalize_replay_output(self, data: Any, tier: str) -> list[dict[str, Any]]:
         """Normalize replay output to standard case format."""
         tier_limits = {"small": 50, "representative": 500, "stress": 2000}
         limit = tier_limits.get(tier, 50)
@@ -416,29 +411,34 @@ class WorkloadLoader:
                 if isinstance(item, dict):
                     cases.append(item)
                 else:
-                    cases.append({
-                        "engine_id": "unknown",
-                        "cycle": 0,
-                        "sensors": {},
-                        "settings": {},
-                        "source": "replay",
-                        "raw": str(item)[:200],
-                    })
+                    cases.append(
+                        {
+                            "engine_id": "unknown",
+                            "cycle": 0,
+                            "sensors": {},
+                            "settings": {},
+                            "source": "replay",
+                            "raw": str(item)[:200],
+                        }
+                    )
         elif isinstance(data, dict):
             for key, val in list(data.items())[:limit]:
-                cases.append({
-                    "engine_id": str(key),
-                    "cycle": 0,
-                    "sensors": val if isinstance(val, dict) else {},
-                    "settings": {},
-                    "source": "replay",
-                })
+                cases.append(
+                    {
+                        "engine_id": str(key),
+                        "cycle": 0,
+                        "sensors": val if isinstance(val, dict) else {},
+                        "settings": {},
+                        "source": "replay",
+                    }
+                )
         return cases
 
 
 # ================================================================
 # Core measurement engine
 # ================================================================
+
 
 class PerformanceHarness:
     """
@@ -452,8 +452,8 @@ class PerformanceHarness:
         self.discovery = ServiceDiscovery()
         self.discovery.discover()
         self.loader = WorkloadLoader(self.discovery)
-        self.errors: List[str] = []
-        self.limitations: List[str] = []
+        self.errors: list[str] = []
+        self.limitations: list[str] = []
 
     # --- Latency measurement ---
 
@@ -484,17 +484,20 @@ class PerformanceHarness:
             try:
                 func(*args, **kwargs)
             except Exception as e:
-                self.errors.append(
-                    f"Latency measurement error ({service_name}): {e}"
-                )
+                self.errors.append(f"Latency measurement error ({service_name}): {e}")
             elapsed_ms = (time.perf_counter() - start) * 1000
             times.append(elapsed_ms)
 
         if not times:
             return TimingResult(
-                service=service_name, runs=0, warmup=warmup,
-                times_ms=[], median_ms=0, mean_ms=0,
-                min_ms=0, max_ms=0,
+                service=service_name,
+                runs=0,
+                warmup=warmup,
+                times_ms=[],
+                median_ms=0,
+                mean_ms=0,
+                min_ms=0,
+                max_ms=0,
             )
 
         return TimingResult(
@@ -513,7 +516,7 @@ class PerformanceHarness:
     def measure_throughput(
         self,
         func,
-        cases: List[Dict],
+        cases: list[dict],
         time_budget_s: float = 60.0,
         tier: str = "small",
     ) -> ThroughputResult:
@@ -550,15 +553,18 @@ class PerformanceHarness:
     def check_determinism(
         self,
         func,
-        cases: List[Dict],
+        cases: list[dict],
         n_runs: int = 5,
     ) -> DeterminismResult:
         """Verify result consistency across repeated runs."""
         if not cases:
             return DeterminismResult(
-                runs=n_runs, cases_checked=0,
-                consistent_cases=0, inconsistent_cases=0,
-                inconsistent_fields=[], verdict="NO_DATA",
+                runs=n_runs,
+                cases_checked=0,
+                consistent_cases=0,
+                inconsistent_cases=0,
+                inconsistent_fields=[],
+                verdict="NO_DATA",
             )
 
         # Collect results from multiple runs
@@ -612,8 +618,8 @@ class PerformanceHarness:
     def check_reliability(
         self,
         func,
-        valid_cases: List[Dict],
-        invalid_cases: List[Dict] = None,
+        valid_cases: list[dict],
+        invalid_cases: list[dict] = None,
     ) -> ReliabilityResult:
         """Verify success/failure visibility."""
         if invalid_cases is None:
@@ -636,16 +642,20 @@ class PerformanceHarness:
                     successful += 1
                 else:
                     silent_losses += 1
-                    error_details.append({
-                        "case": f"valid_{i}",
-                        "issue": "returned None silently",
-                    })
+                    error_details.append(
+                        {
+                            "case": f"valid_{i}",
+                            "issue": "returned None silently",
+                        }
+                    )
             except Exception as e:
                 failed_with_error += 1
-                error_details.append({
-                    "case": f"valid_{i}",
-                    "error": str(e)[:200],
-                })
+                error_details.append(
+                    {
+                        "case": f"valid_{i}",
+                        "error": str(e)[:200],
+                    }
+                )
 
         # Invalid cases should fail visibly (not silently)
         for i, case in enumerate(invalid_cases):
@@ -653,21 +663,25 @@ class PerformanceHarness:
                 result = func(case)
                 if result is None:
                     silent_losses += 1
-                    error_details.append({
-                        "case": f"invalid_{i}",
-                        "issue": "silent None for invalid input",
-                    })
+                    error_details.append(
+                        {
+                            "case": f"invalid_{i}",
+                            "issue": "silent None for invalid input",
+                        }
+                    )
                 else:
-                    # Returned something for invalid input — check if
+                    # Returned something for invalid input Ã¢â‚¬â€ check if
                     # it carries an error/uncertainty flag
                     successful += 1  # Graceful degradation is OK
             except Exception as e:
                 failed_with_error += 1  # Visible failure is acceptable
-                error_details.append({
-                    "case": f"invalid_{i}",
-                    "error": str(e)[:200],
-                    "note": "visible failure (acceptable)",
-                })
+                error_details.append(
+                    {
+                        "case": f"invalid_{i}",
+                        "error": str(e)[:200],
+                        "note": "visible failure (acceptable)",
+                    }
+                )
 
         return ReliabilityResult(
             total_cases=len(valid_cases[:20]) + len(invalid_cases),
@@ -679,9 +693,7 @@ class PerformanceHarness:
 
     # --- Resource observation ---
 
-    def observe_resources(
-        self, func, cases: List[Dict]
-    ) -> List[ResourceSnapshot]:
+    def observe_resources(self, func, cases: list[dict]) -> list[ResourceSnapshot]:
         """Observe memory behavior during workload execution."""
         snapshots = []
 
@@ -689,12 +701,14 @@ class PerformanceHarness:
 
         # Before
         current, peak = tracemalloc.get_traced_memory()
-        snapshots.append(ResourceSnapshot(
-            phase="before",
-            current_mb=round(current / 1024 / 1024, 2),
-            peak_mb=round(peak / 1024 / 1024, 2),
-            timestamp=datetime.now(timezone.utc).isoformat(),
-        ))
+        snapshots.append(
+            ResourceSnapshot(
+                phase="before",
+                current_mb=round(current / 1024 / 1024, 2),
+                peak_mb=round(peak / 1024 / 1024, 2),
+                timestamp=datetime.now(UTC).isoformat(),
+            )
+        )
 
         # During
         for case in cases[:20]:
@@ -704,22 +718,26 @@ class PerformanceHarness:
                 pass
 
         current, peak = tracemalloc.get_traced_memory()
-        snapshots.append(ResourceSnapshot(
-            phase="during",
-            current_mb=round(current / 1024 / 1024, 2),
-            peak_mb=round(peak / 1024 / 1024, 2),
-            timestamp=datetime.now(timezone.utc).isoformat(),
-        ))
+        snapshots.append(
+            ResourceSnapshot(
+                phase="during",
+                current_mb=round(current / 1024 / 1024, 2),
+                peak_mb=round(peak / 1024 / 1024, 2),
+                timestamp=datetime.now(UTC).isoformat(),
+            )
+        )
 
         tracemalloc.stop()
 
         # After
-        snapshots.append(ResourceSnapshot(
-            phase="after",
-            current_mb=round(current / 1024 / 1024, 2),
-            peak_mb=round(peak / 1024 / 1024, 2),
-            timestamp=datetime.now(timezone.utc).isoformat(),
-        ))
+        snapshots.append(
+            ResourceSnapshot(
+                phase="after",
+                current_mb=round(current / 1024 / 1024, 2),
+                peak_mb=round(peak / 1024 / 1024, 2),
+                timestamp=datetime.now(UTC).isoformat(),
+            )
+        )
 
         return snapshots
 
@@ -734,9 +752,9 @@ class PerformanceHarness:
     ) -> BenchmarkReport:
         """Execute all P3.S3 measurements and return a complete report."""
 
-        print(f"\n{'='*60}")
-        print(f" AEGIS P3.S3 BENCHMARK — Tier: {tier}")
-        print(f"{'='*60}\n")
+        print(f"\n{'=' * 60}")
+        print(f" AEGIS P3.S3 BENCHMARK Ã¢â‚¬â€ Tier: {tier}")
+        print(f"{'=' * 60}\n")
 
         # Discovery
         print(self.discovery.report())
@@ -761,34 +779,32 @@ class PerformanceHarness:
         if eval_func and cases:
             sample = cases[0]
             t = self.measure_latency(
-                eval_func, args=(sample,),
-                n_runs=n_latency_runs, warmup=1,
+                eval_func,
+                args=(sample,),
+                n_runs=n_latency_runs,
+                warmup=1,
                 service_name="integrated_pipeline",
             )
             latency_results["integrated_pipeline"] = asdict(t)
-            print(f"  Median: {t.median_ms:.2f} ms  "
-                  f"p95: {t.p95_ms:.2f} ms  "
-                  f"({t.runs} runs)")
+            print(f"  Median: {t.median_ms:.2f} ms  p95: {t.p95_ms:.2f} ms  ({t.runs} runs)")
 
             # Per-service latency if services are instantiated
             for svc_name, svc_instance in self.discovery.services.items():
                 if callable(svc_instance):
                     try:
                         st = self.measure_latency(
-                            svc_instance, args=(sample,),
-                            n_runs=n_latency_runs, warmup=1,
+                            svc_instance,
+                            args=(sample,),
+                            n_runs=n_latency_runs,
+                            warmup=1,
                             service_name=svc_name,
                         )
                         latency_results[svc_name] = asdict(st)
                         print(f"  {svc_name}: median {st.median_ms:.2f} ms")
                     except Exception as e:
-                        self.errors.append(
-                            f"Service latency ({svc_name}): {e}"
-                        )
+                        self.errors.append(f"Service latency ({svc_name}): {e}")
         else:
-            self.limitations.append(
-                "Latency measurement skipped: no eval function or data"
-            )
+            self.limitations.append("Latency measurement skipped: no eval function or data")
             print("  Skipped (no eval function or data)")
         print()
 
@@ -798,13 +814,17 @@ class PerformanceHarness:
         if eval_func and cases:
             budget = throughput_budget_s
             tp = self.measure_throughput(
-                eval_func, cases,
-                time_budget_s=budget, tier=tier,
+                eval_func,
+                cases,
+                time_budget_s=budget,
+                tier=tier,
             )
             throughput_result = asdict(tp)
-            print(f"  {tp.completed_cases}/{tp.total_cases} cases "
-                  f"in {tp.duration_s:.2f}s "
-                  f"({tp.cases_per_second:.2f} cases/s)")
+            print(
+                f"  {tp.completed_cases}/{tp.total_cases} cases "
+                f"in {tp.duration_s:.2f}s "
+                f"({tp.cases_per_second:.2f} cases/s)"
+            )
         else:
             self.limitations.append("Throughput skipped: no eval function")
             print("  Skipped")
@@ -815,12 +835,16 @@ class PerformanceHarness:
         determinism_result = None
         if eval_func and cases:
             det = self.check_determinism(
-                eval_func, cases, n_runs=n_determinism_runs,
+                eval_func,
+                cases,
+                n_runs=n_determinism_runs,
             )
             determinism_result = asdict(det)
-            print(f"  Verdict: {det.verdict} "
-                  f"({det.consistent_cases} consistent, "
-                  f"{det.inconsistent_cases} inconsistent)")
+            print(
+                f"  Verdict: {det.verdict} "
+                f"({det.consistent_cases} consistent, "
+                f"{det.inconsistent_cases} inconsistent)"
+            )
         else:
             self.limitations.append("Determinism skipped: no eval function")
             print("  Skipped")
@@ -832,9 +856,11 @@ class PerformanceHarness:
         if eval_func:
             rel = self.check_reliability(eval_func, cases)
             reliability_result = asdict(rel)
-            print(f"  Success: {rel.successful}  "
-                  f"Errors: {rel.failed_with_error}  "
-                  f"Silent losses: {rel.silent_losses}")
+            print(
+                f"  Success: {rel.successful}  "
+                f"Errors: {rel.failed_with_error}  "
+                f"Silent losses: {rel.silent_losses}"
+            )
         else:
             self.limitations.append("Reliability skipped: no eval function")
             print("  Skipped")
@@ -847,9 +873,7 @@ class PerformanceHarness:
             snaps = self.observe_resources(eval_func, cases)
             resource_snapshots = [asdict(s) for s in snaps]
             for s in snaps:
-                print(f"  {s.phase:>7}: "
-                      f"current={s.current_mb:.1f}MB  "
-                      f"peak={s.peak_mb:.1f}MB")
+                print(f"  {s.phase:>7}: current={s.current_mb:.1f}MB  peak={s.peak_mb:.1f}MB")
         else:
             print("  Skipped")
         print()
@@ -858,16 +882,21 @@ class PerformanceHarness:
         git_commit = "unknown"
         try:
             import subprocess
-            git_commit = subprocess.check_output(
-                ["git", "rev-parse", "--short", "HEAD"],
-                stderr=subprocess.DEVNULL,
-            ).decode().strip()
+
+            git_commit = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    stderr=subprocess.DEVNULL,
+                )
+                .decode()
+                .strip()
+            )
         except Exception:
             pass
 
         # Build report
         report = BenchmarkReport(
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             machine=platform.node(),
             python_version=platform.python_version(),
             git_commit=git_commit,
@@ -883,9 +912,9 @@ class PerformanceHarness:
             limitations=self.limitations,
         )
 
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(" BENCHMARK COMPLETE")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         return report
 
@@ -901,7 +930,8 @@ class PerformanceHarness:
 
         # If we have instantiated services, chain them
         if services:
-            def pipeline(case: Dict) -> Dict:
+
+            def pipeline(case: dict) -> dict:
                 results = {"input_engine": case.get("engine_id", "?")}
                 sensors = case.get("sensors", {})
                 for name, svc in services.items():
@@ -912,16 +942,19 @@ class PerformanceHarness:
                     except Exception as e:
                         results[name] = f"error: {e}"
                 return results
+
             return pipeline
 
         # Fallback: if we have modules but no instances, try module-level functions
         if modules:
-            def module_pipeline(case: Dict) -> Dict:
+
+            def module_pipeline(case: dict) -> dict:
                 return {
                     "engine": case.get("engine_id", "?"),
                     "sensors_count": len(case.get("sensors", {})),
                     "status": "module_discovery_only",
                 }
+
             return module_pipeline
 
         return None
@@ -934,9 +967,7 @@ class PerformanceHarness:
         except Exception:
             return hashlib.sha256(str(result).encode()).hexdigest()[:16]
 
-    def save_report(
-        self, report: BenchmarkReport, output_path: str
-    ) -> str:
+    def save_report(self, report: BenchmarkReport, output_path: str) -> str:
         """Save benchmark report as JSON."""
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         data = asdict(report)

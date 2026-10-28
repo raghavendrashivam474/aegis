@@ -1,8 +1,9 @@
-﻿"""
+"""
 Aegis Domain Package.
 Exposes domain entities, aggregates, exceptions, persistence ports,
 and intelligence value objects.
 """
+
 from .entities import (
     Asset,
     Device,
@@ -39,10 +40,17 @@ from .model import WorldModel
 from .repository import (
     DeviceRegistry,
     InMemoryDeviceRegistry,
+    InMemorySnapshotRepository,
     InMemoryTelemetryRepository,
     InMemoryWorldRepository,
+    IntelligenceSnapshotRepository,
     TelemetryRepository,
     WorldRepository,
+)
+from .snapshot import (
+    SNAPSHOT_CONTRACT_VERSION,
+    EvaluationStatus,
+    IntelligenceSnapshot,
 )
 
 __all__ = [
@@ -64,6 +72,8 @@ __all__ = [
     "HypothesisCategory",
     "InMemoryDeviceRegistry",
     "InMemoryTelemetryRepository",
+    "InMemorySnapshotRepository",
+    "IntelligenceSnapshotRepository",
     "InMemoryWorldRepository",
     "InvariantViolationError",
     "Observation",
@@ -79,4 +89,7 @@ __all__ = [
     "World",
     "WorldModel",
     "WorldRepository",
+    "EvaluationStatus",
+    "IntelligenceSnapshot",
+    "SNAPSHOT_CONTRACT_VERSION",
 ]

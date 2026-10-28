@@ -5,12 +5,15 @@ Defines technology-neutral persistence boundaries for World aggregates,
 historical telemetry observations, and registered edge devices.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from datetime import datetime
 
 from .entities import Device, Observation
 from .exceptions import EntityNotFoundError
 from .model import WorldModel
+from .snapshot import IntelligenceSnapshot
 
 
 class WorldRepository(ABC):
@@ -231,3 +234,78 @@ class InMemoryTelemetryRepository(TelemetryRepository):
         if not matching:
             return None
         return max(matching, key=lambda x: x.timestamp)
+
+
+# --- P4.S2 Intelligence Snapshot Persistence Port ---
+
+
+class IntelligenceSnapshotRepository(ABC):
+    """
+    Abstract Port for intelligence snapshot persistence (P4.S2).
+    Stores the output of complete or partial intelligence evaluations
+    as durable, queryable records.
+    """
+
+    @abstractmethod
+    def save(self, snapshot: IntelligenceSnapshot) -> None:
+        """Persist an intelligence snapshot. Raises on database failure."""
+        pass
+
+    @abstractmethod
+    def get_latest(self, device_id: str) -> IntelligenceSnapshot | None:
+        """Retrieve the most recent snapshot for a device, or None."""
+        pass
+
+    @abstractmethod
+    def get_latest_for_fleet(self, device_ids: list[str]) -> dict[str, IntelligenceSnapshot]:
+        """
+        Retrieve the most recent snapshot for each device in the list.
+        Returns a dict keyed by device_id. Devices without snapshots
+        are omitted from the result.
+        """
+        pass
+
+    @abstractmethod
+    def get_history(self, device_id: str, limit: int = 50) -> list[IntelligenceSnapshot]:
+        """Retrieve historical snapshots for a device, newest first."""
+        pass
+
+    @abstractmethod
+    def get_by_id(self, snapshot_id: str) -> IntelligenceSnapshot | None:
+        """Retrieve a specific snapshot by its unique ID."""
+        pass
+
+
+class InMemorySnapshotRepository(IntelligenceSnapshotRepository):
+    """In-memory implementation for testing and offline evaluation."""
+
+    def __init__(self) -> None:
+        self._snapshots: list[IntelligenceSnapshot] = []
+
+    def save(self, snapshot: IntelligenceSnapshot) -> None:
+        self._snapshots.append(snapshot)
+
+    def get_latest(self, device_id: str) -> IntelligenceSnapshot | None:
+        matching = [s for s in self._snapshots if s.device_id == device_id]
+        if not matching:
+            return None
+        return max(matching, key=lambda s: s.evaluated_at)
+
+    def get_latest_for_fleet(self, device_ids: list[str]) -> dict[str, IntelligenceSnapshot]:
+        result: dict[str, IntelligenceSnapshot] = {}
+        for did in device_ids:
+            latest = self.get_latest(did)
+            if latest is not None:
+                result[did] = latest
+        return result
+
+    def get_history(self, device_id: str, limit: int = 50) -> list[IntelligenceSnapshot]:
+        matching = [s for s in self._snapshots if s.device_id == device_id]
+        matching.sort(key=lambda s: s.evaluated_at, reverse=True)
+        return matching[:limit]
+
+    def get_by_id(self, snapshot_id: str) -> IntelligenceSnapshot | None:
+        for s in self._snapshots:
+            if s.snapshot_id == snapshot_id:
+                return s
+        return None

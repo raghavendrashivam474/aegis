@@ -1,9 +1,10 @@
-﻿"""
+"""
 Aegis Intelligence — Pure Statistical Functions.
 No side effects, no I/O, no framework dependencies.
 All functions operate on plain lists of floats.
 Fully deterministic given the same inputs.
 """
+
 from __future__ import annotations
 
 import math
@@ -92,4 +93,3 @@ def compute_sensor_health(
     A deviation of 0 → 100, deviation of 2σ with weight 15 → 70.
     """
     return max(0.0, 100.0 - (deviation_score * weight))
-
