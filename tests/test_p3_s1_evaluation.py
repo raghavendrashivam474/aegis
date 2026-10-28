@@ -165,6 +165,11 @@ class TestP3S1HarnessExecution:
 
     @classmethod
     def setup_class(cls):
+        from pathlib import Path
+
+        import pytest
+        if not Path('datasets/cmapss_fd001/train_FD001.txt').exists():
+            pytest.skip('C-MAPSS dataset file not available in CI environment.')
         cls.harness = FleetBenchmarkHarness()
         cls.trajectories = cls.harness.load_cmapss_trajectories()
 

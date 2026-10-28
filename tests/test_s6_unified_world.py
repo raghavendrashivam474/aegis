@@ -71,7 +71,7 @@ def test_fr_s6_01_unified_producer_flow():
         config=IngestionConfig(broker_host=MQTT_HOST, broker_port=MQTT_PORT), pipeline=pipeline
     )
     consumer.start(blocking=False)
-    time.sleep(0.3)
+    time.sleep(1.0)
 
     pub = mqtt.Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id="test-s6-publisher"

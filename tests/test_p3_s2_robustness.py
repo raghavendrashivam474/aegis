@@ -83,6 +83,11 @@ def _evaluate_pipeline(
 
 @pytest.fixture(scope="module")
 def cmapss_trajectories():
+    from pathlib import Path
+
+    import pytest
+    if not Path('datasets/cmapss_fd001/train_FD001.txt').exists():
+        pytest.skip('C-MAPSS dataset file not available in CI environment.')
     harness = FleetBenchmarkHarness()
     return harness.load_cmapss_trajectories()
 
